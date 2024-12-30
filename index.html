@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TiltWind BLE Monitor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #data {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>TiltWind BLE Monitor</h1>
+  <button id="connectButton">Connect to TiltWind</button>
+  <div id="data"></div>
+
+  <script>
+    const serviceUUID = "0000180F-0000-1000-8000-00805F9B34FB"; // Battery Service UUID
+    const characteristicUUIDs = {
+      windDirection: "00002A6D-0000-1000-8000-00805F9B34FB",
+      windSpeed: "00002A70-0000-1000-8000-00805F9B34FB",
+      gustSpeed: "00002A71-0000-1000-8000-00805F9B34FB",
+      temperature: "00002A1F-0000-1000-8000-00805F9B34FB",
+      humidity: "00002A6F-0000-1000-8000-00805F9B34FB",
+      pressure: "00002A6D-0000-1000-8000-00805F9B34FB",
+    };
+
+    let device, server, service;
+
+    document.getElementById("connectButton").addEventListener("click", async () => {
+      try {
+        // Request device
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: false,
+          filters: [{ services: [serviceUUID] }],
+        });
+
+        // Connect to GATT server
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(serviceUUID);
+        document.getElementById("data").innerHTML = "<p>Connected to TiltWind!</p>";
+
+        // Start Reading Characteristics
+        for (let [name, uuid] of Object.entries(characteristicUUIDs)) {
+          let characteristic = await service.getCharacteristic(uuid);
+          characteristic.startNotifications();
+          characteristic.addEventListener("characteristicvaluechanged", (event) => {
+            const value = new DataView(event.target.value.buffer).getFloat32(0, true);
+            updateData(name, value);
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        document.getElementById("data").innerHTML = "<p>Error connecting to TiltWind!</p>";
+      }
+    });
+
+    function updateData(name, value) {
+      const dataDiv = document.getElementById("data");
+      if (!dataDiv.querySelector(`#${name}`)) {
+        const para = document.createElement("p");
+        para.id = name;
+        dataDiv.appendChild(para);
+      }
+      document.getElementById(name).textContent = `${name}: ${value.toFixed(2)}`;
+    }
+  </script>
+</body>
+</html>
