@@ -70,8 +70,8 @@
           acceptAllDevices: false,
           filters: [{ name: "TiltWind" }],
           optionalServices: [
-            "0000180f-0000-1000-8000-00805f9b34fb", // Battery Service
-            "0000180a-0000-1000-8000-00805f9b34fb"  // Device Info Service
+            "0000180F-0000-1000-8000-00805F9B34FB", // Battery Service
+            "0000180A-0000-1000-8000-00805F9B34FB"  // Device Info Service
           ]
         });
 
@@ -82,17 +82,17 @@
         disconnectButton.disabled = false;
 
         // Access Services and Characteristics
-        const batteryService = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
-        batteryVoltageChar = await batteryService.getCharacteristic("00002a19-0000-1000-8000-00805f9b34fb");
-        solarVoltageChar = await batteryService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
+        const batteryService = await server.getPrimaryService("0000180F-0000-1000-8000-00805F9B34FB");
+        batteryVoltageChar = await batteryService.getCharacteristic("00002A19-0000-1000-8000-00805F9B34FB");
+        solarVoltageChar = await batteryService.getCharacteristic("00002A6E-0000-1000-8000-00805F9B34FB");
 
-        const deviceInfoService = await server.getPrimaryService("0000180a-0000-1000-8000-00805f9b34fb");
-        windDirectionChar = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
-        windSpeedChar = await deviceInfoService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
-        gustSpeedChar = await deviceInfoService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
-        temperatureChar = await deviceInfoService.getCharacteristic("00002a1f-0000-1000-8000-00805f9b34fb");
-        humidityChar = await deviceInfoService.getCharacteristic("00002a6f-0000-1000-8000-00805f9b34fb");
-        pressureChar = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
+        const deviceInfoService = await server.getPrimaryService("0000180A-0000-1000-8000-00805F9B34FB");
+        windDirectionChar = await deviceInfoService.getCharacteristic("00002A6D-0000-1000-8000-00805F9B34FB");
+        windSpeedChar = await deviceInfoService.getCharacteristic("00002A70-0000-1000-8000-00805F9B34FB");
+        gustSpeedChar = await deviceInfoService.getCharacteristic("00002A71-0000-1000-8000-00805F9B34FB");
+        temperatureChar = await deviceInfoService.getCharacteristic("00002A1F-0000-1000-8000-00805F9B34FB");
+        humidityChar = await deviceInfoService.getCharacteristic("00002A6F-0000-1000-8000-00805F9B34FB");
+        pressureChar = await deviceInfoService.getCharacteristic("00002A6D-0000-1000-8000-00805F9B34FB");
 
         // Read and Update Values
         updateValues();
