@@ -59,21 +59,33 @@
       solarVoltage: document.getElementById("solarVoltage"),
     };
 
-    let device, server, windDirectionChar, windSpeedChar, gustSpeedChar, temperatureChar, humidityChar, pressureChar, batteryVoltageChar, solarVoltageChar;
+    const services = {
+      batteryService: "0000180f-0000-1000-8000-00805f9b34fb", // Battery Service
+      deviceInfoService: "0000180a-0000-1000-8000-00805f9b34fb", // Device Information Service
+    };
+
+    const characteristics = {
+      windDirection: "00002a6d-0000-1000-8000-00805f9b34fb",
+      windSpeed: "00002a70-0000-1000-8000-00805f9b34fb",
+      gustSpeed: "00002a71-0000-1000-8000-00805f9b34fb",
+      temperature: "00002a1f-0000-1000-8000-00805f9b34fb",
+      humidity: "00002a6f-0000-1000-8000-00805f9b34fb",
+      pressure: "00002a6d-0000-1000-8000-00805f9b34fb",
+      batteryVoltage: "00002a19-0000-1000-8000-00805f9b34fb",
+      solarVoltage: "00002a6e-0000-1000-8000-00805f9b34fb",
+    };
+
+    let device, server, serviceRefs = {}, characteristicRefs = {};
 
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
-        
-        // Request BLE device
+
+        // Request BLE device by name
         device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: false,
           filters: [{ name: "TiltWind" }],
-          optionalServices: [
-            "0000180f-0000-1000-8000-00805f9b34fb", // Battery Service
-            "0000181c-0000-1000-8000-00805f9b34fb", // Wind Service
-            "0000181e-0000-1000-8000-00805f9b34fb"  // Environmental Service
-          ]
+          optionalServices: Object.values(services),
         });
 
         server = await device.gatt.connect();
@@ -82,26 +94,25 @@
         connectButton.disabled = true;
         disconnectButton.disabled = false;
 
-        // Access Services and Characteristics
-        const windService = await server.getPrimaryService("0000181c-0000-1000-8000-00805f9b34fb");
-        windDirectionChar = await windService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
-        windSpeedChar = await windService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
-        gustSpeedChar = await windService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
+        // Access Services
+        serviceRefs.batteryService = await server.getPrimaryService(services.batteryService);
+        serviceRefs.deviceInfoService = await server.getPrimaryService(services.deviceInfoService);
 
-        const environmentalService = await server.getPrimaryService("0000181e-0000-1000-8000-00805f9b34fb");
-        temperatureChar = await environmentalService.getCharacteristic("00002a1f-0000-1000-8000-00805f9b34fb");
-        humidityChar = await environmentalService.getCharacteristic("00002a6f-0000-1000-8000-00805f9b34fb");
-        pressureChar = await environmentalService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
+        // Access Characteristics
+        characteristicRefs.batteryVoltage = await serviceRefs.batteryService.getCharacteristic(characteristics.batteryVoltage);
+        characteristicRefs.solarVoltage = await serviceRefs.batteryService.getCharacteristic(characteristics.solarVoltage);
 
-        const batteryService = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
-        batteryVoltageChar = await batteryService.getCharacteristic("00002a19-0000-1000-8000-00805f9b34fb");
-        solarVoltageChar = await batteryService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
+        characteristicRefs.windDirection = await serviceRefs.deviceInfoService.getCharacteristic(characteristics.windDirection);
+        characteristicRefs.windSpeed = await serviceRefs.deviceInfoService.getCharacteristic(characteristics.windSpeed);
+        characteristicRefs.gustSpeed = await serviceRefs.deviceInfoService.getCharacteristic(characteristics.gustSpeed);
+        characteristicRefs.temperature = await serviceRefs.deviceInfoService.getCharacteristic(characteristics.temperature);
+        characteristicRefs.humidity = await serviceRefs.deviceInfoService.getCharacteristic(characteristics.humidity);
+        characteristicRefs.pressure = await serviceRefs.deviceInfoService.getCharacteristic(characteristics.pressure);
 
-        // Read and Update Values
         updateValues();
         setInterval(updateValues, 10000);
       } catch (error) {
-        console.error("Error:", error);
+        console.error("Error connecting to TiltWind:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
       }
     });
@@ -122,45 +133,11 @@
 
     async function updateValues() {
       try {
-        // Wind Direction
-        const windDirectionValue = await windDirectionChar.readValue();
-        const windDirection = windDirectionValue.getFloat32(0, true);
-        dataFields.windDirection.textContent = windDirection.toFixed(2);
-
-        // Wind Speed
-        const windSpeedValue = await windSpeedChar.readValue();
-        const windSpeed = windSpeedValue.getFloat32(0, true);
-        dataFields.windSpeed.textContent = windSpeed.toFixed(2);
-
-        // Gust Speed
-        const gustSpeedValue = await gustSpeedChar.readValue();
-        const gustSpeed = gustSpeedValue.getFloat32(0, true);
-        dataFields.gustSpeed.textContent = gustSpeed.toFixed(2);
-
-        // Temperature
-        const temperatureValue = await temperatureChar.readValue();
-        const temperature = temperatureValue.getFloat32(0, true);
-        dataFields.temperature.textContent = temperature.toFixed(2);
-
-        // Humidity
-        const humidityValue = await humidityChar.readValue();
-        const humidity = humidityValue.getFloat32(0, true);
-        dataFields.humidity.textContent = humidity.toFixed(2);
-
-        // Pressure
-        const pressureValue = await pressureChar.readValue();
-        const pressure = pressureValue.getFloat32(0, true);
-        dataFields.pressure.textContent = pressure.toFixed(2);
-
-        // Battery Voltage
-        const batteryVoltageValue = await batteryVoltageChar.readValue();
-        const batteryVoltage = batteryVoltageValue.getFloat32(0, true);
-        dataFields.batteryVoltage.textContent = batteryVoltage.toFixed(2);
-
-        // Solar Voltage
-        const solarVoltageValue = await solarVoltageChar.readValue();
-        const solarVoltage = solarVoltageValue.getFloat32(0, true);
-        dataFields.solarVoltage.textContent = solarVoltage.toFixed(2);
+        for (const [key, char] of Object.entries(characteristicRefs)) {
+          const value = await char.readValue();
+          const parsedValue = new DataView(value.buffer).getFloat32(0, true);
+          dataFields[key].textContent = parsedValue.toFixed(2);
+        }
       } catch (error) {
         console.error("Update Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
