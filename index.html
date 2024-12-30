@@ -59,18 +59,24 @@
       solarVoltage: document.getElementById("solarVoltage"),
     };
 
-    const characteristicUUIDs = {
-      windDirection: "00002a6d-0000-1000-8000-00805f9b34fb",
-      windSpeed: "00002a70-0000-1000-8000-00805f9b34fb",
-      gustSpeed: "00002a71-0000-1000-8000-00805f9b34fb",
-      temperature: "00002a1f-0000-1000-8000-00805f9b34fb",
-      humidity: "00002a6f-0000-1000-8000-00805f9b34fb",
-      pressure: "00002a6d-0000-1000-8000-00805f9b34fb",
-      batteryVoltage: "00002a19-0000-1000-8000-00805f9b34fb",
-      solarVoltage: "00002a6e-0000-1000-8000-00805f9b34fb",
+    const services = {
+      battery: "0000180f-0000-1000-8000-00805f9b34fb", // Battery Service
+      wind: "0000181c-0000-1000-8000-00805f9b34fb", // Wind Service
+      environmental: "0000181e-0000-1000-8000-00805f9b34fb", // Environmental Service
     };
 
-    let device, server, service, characteristics = {};
+    const characteristics = {
+      batteryVoltage: "00002a19-0000-1000-8000-00805f9b34fb", // Battery Voltage
+      solarVoltage: "00002a6e-0000-1000-8000-00805f9b34fb", // Solar Voltage
+      windDirection: "00002a6d-0000-1000-8000-00805f9b34fb", // Wind Direction
+      windSpeed: "00002a70-0000-1000-8000-00805f9b34fb", // Wind Speed
+      gustSpeed: "00002a71-0000-1000-8000-00805f9b34fb", // Gust Speed
+      temperature: "00002a1f-0000-1000-8000-00805f9b34fb", // Temperature
+      humidity: "00002a6f-0000-1000-8000-00805f9b34fb", // Humidity
+      pressure: "00002a6d-0000-1000-8000-00805f9b34fb", // Pressure
+    };
+
+    let device, server, characteristicsRefs = {};
 
     connectButton.addEventListener("click", async () => {
       console.log("Connect button clicked");
@@ -80,23 +86,32 @@
         device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: false,
           filters: [{ name: "TiltWind" }],
-          optionalServices: ["0000180f-0000-1000-8000-00805f9b34fb"] // Lowercase UUID
+          optionalServices: Object.values(services),
         });
 
         console.log("Device found:", device.name);
         server = await device.gatt.connect();
-        service = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
 
-        console.log("Connected to GATT server");
+        // Connect to services and initialize characteristics
+        const batteryService = await server.getPrimaryService(services.battery);
+        characteristicsRefs.batteryVoltage = await batteryService.getCharacteristic(characteristics.batteryVoltage);
+        characteristicsRefs.solarVoltage = await batteryService.getCharacteristic(characteristics.solarVoltage);
+
+        const windService = await server.getPrimaryService(services.wind);
+        characteristicsRefs.windDirection = await windService.getCharacteristic(characteristics.windDirection);
+        characteristicsRefs.windSpeed = await windService.getCharacteristic(characteristics.windSpeed);
+        characteristicsRefs.gustSpeed = await windService.getCharacteristic(characteristics.gustSpeed);
+
+        const environmentalService = await server.getPrimaryService(services.environmental);
+        characteristicsRefs.temperature = await environmentalService.getCharacteristic(characteristics.temperature);
+        characteristicsRefs.humidity = await environmentalService.getCharacteristic(characteristics.humidity);
+        characteristicsRefs.pressure = await environmentalService.getCharacteristic(characteristics.pressure);
+
+        console.log("Connected to all services!");
         statusDiv.textContent = "Status: Connected";
 
         connectButton.disabled = true;
         disconnectButton.disabled = false;
-
-        for (const [key, uuid] of Object.entries(characteristicUUIDs)) {
-          characteristics[key] = await service.getCharacteristic(uuid);
-          console.log(`Characteristic ${key} initialized`);
-        }
 
         updateValues();
         setInterval(updateValues, 10000);
@@ -113,7 +128,6 @@
         connectButton.disabled = false;
         disconnectButton.disabled = true;
 
-        // Clear displayed values
         for (const key in dataFields) {
           dataFields[key].textContent = "N/A";
         }
@@ -122,7 +136,7 @@
 
     async function updateValues() {
       try {
-        for (const [key, char] of Object.entries(characteristics)) {
+        for (const [key, char] of Object.entries(characteristicsRefs)) {
           const value = await char.readValue();
           const parsedValue = new DataView(value.buffer).getFloat32(0, true);
           dataFields[key].textContent = parsedValue.toFixed(2);
