@@ -84,9 +84,9 @@
         // Access Services and Characteristics
         const batteryService = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
         batteryVoltageChar = await batteryService.getCharacteristic("00002a19-0000-1000-8000-00805f9b34fb");
-        solarVoltageChar = await batteryService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
 
         const deviceInfoService = await server.getPrimaryService("0000180a-0000-1000-8000-00805f9b34fb");
+		solarVoltageChar = await deviceInfoService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
         windDirectionChar = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
         windSpeedChar = await deviceInfoService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
         gustSpeedChar = await deviceInfoService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
