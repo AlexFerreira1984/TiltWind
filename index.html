@@ -18,7 +18,7 @@
       margin-top: 10px;
       color: #007BFF;
     }
-    .data {
+    .data, .graph {
       margin-top: 20px;
       font-size: 16px;
     }
@@ -27,13 +27,18 @@
       padding: 10px 20px;
       font-size: 16px;
     }
+    canvas {
+      margin-top: 20px;
+    }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <h1>TiltWind BLE Monitor</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
+  
   <div class="data">
     <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span>°</p>
     <p><strong>Wind Speed:</strong> <span id="windSpeed">N/A</span> m/s</p>
@@ -44,10 +49,26 @@
     <p><strong>Battery Voltage:</strong> <span id="batteryVoltage">N/A</span> V</p>
     <p><strong>Solar Voltage:</strong> <span id="solarVoltage">N/A</span> V</p>
   </div>
+
+  <div class="actions">
+    <button id="tareButton">Tare</button>
+    <button id="calibrateButton">Calibrate</button>
+    <button id="startButton">Start</button>
+    <button id="stopButton">Stop</button>
+  </div>
+
+  <div class="graph">
+    <canvas id="windGraph" width="400" height="200"></canvas>
+  </div>
+
   <script>
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
+    const tareButton = document.getElementById("tareButton");
+    const calibrateButton = document.getElementById("calibrateButton");
+    const startButton = document.getElementById("startButton");
+    const stopButton = document.getElementById("stopButton");
     const dataFields = {
       windDirection: document.getElementById("windDirection"),
       windSpeed: document.getElementById("windSpeed"),
@@ -59,19 +80,36 @@
       solarVoltage: document.getElementById("solarVoltage"),
     };
 
-    let device, server, windDirectionChar, windSpeedChar, gustSpeedChar, temperatureChar, humidityChar, pressureChar, batteryVoltageChar, solarVoltageChar;
+    let device, server, characteristics = {};
+
+    const windGraphCtx = document.getElementById("windGraph").getContext("2d");
+    const windGraph = new Chart(windGraphCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Wind Speed (m/s)",
+            data: [],
+            borderColor: "rgba(75, 192, 192, 1)",
+            borderWidth: 2,
+            fill: false,
+          },
+        ],
+      },
+    });
 
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
-        
+
         // Request BLE device
         device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: false,
           filters: [{ name: "TiltWind" }],
           optionalServices: [
             "0000180f-0000-1000-8000-00805f9b34fb", // Battery Service
-            "0000180a-0000-1000-8000-00805f9b34fb"  // Device Info Service
+            "0000180a-0000-1000-8000-00805f9b34fb"  // Device Information Service
           ]
         });
 
@@ -83,18 +121,21 @@
 
         // Access Services and Characteristics
         const batteryService = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
-        batteryVoltageChar = await batteryService.getCharacteristic("00002a19-0000-1000-8000-00805f9b34fb");
+        characteristics.batteryVoltage = await batteryService.getCharacteristic("00002a19-0000-1000-8000-00805f9b34fb");
 
         const deviceInfoService = await server.getPrimaryService("0000180a-0000-1000-8000-00805f9b34fb");
-		solarVoltageChar = await deviceInfoService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
-        windDirectionChar = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
-        windSpeedChar = await deviceInfoService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
-        gustSpeedChar = await deviceInfoService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
-        temperatureChar = await deviceInfoService.getCharacteristic("00002a1f-0000-1000-8000-00805f9b34fb");
-        humidityChar = await deviceInfoService.getCharacteristic("00002a6f-0000-1000-8000-00805f9b34fb");
-        pressureChar = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
+        characteristics.solarVoltage = await deviceInfoService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
+        characteristics.windDirection = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
+        characteristics.windSpeed = await deviceInfoService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
+        characteristics.gustSpeed = await deviceInfoService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
+        characteristics.temperature = await deviceInfoService.getCharacteristic("00002a1f-0000-1000-8000-00805f9b34fb");
+        characteristics.humidity = await deviceInfoService.getCharacteristic("00002a6f-0000-1000-8000-00805f9b34fb");
+        characteristics.pressure = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
 
-        // Read and Update Values
+        // Fetch stored data
+        fetchStoredData();
+
+        // Read and Update Live Values
         updateValues();
         setInterval(updateValues, 10000);
       } catch (error) {
@@ -117,51 +158,50 @@
       }
     });
 
+    tareButton.addEventListener("click", () => {
+      // Implement tare functionality (BLE command to tare system)
+      console.log("Tare triggered");
+    });
+
+    calibrateButton.addEventListener("click", () => {
+      // Implement calibration functionality (BLE command to start calibration)
+      console.log("Calibration triggered");
+    });
+
+    startButton.addEventListener("click", () => {
+      // Implement start functionality (BLE command to start measurements)
+      console.log("Start triggered");
+    });
+
+    stopButton.addEventListener("click", () => {
+      // Implement stop functionality (BLE command to stop measurements)
+      console.log("Stop triggered");
+    });
+
     async function updateValues() {
       try {
-        // Wind Direction
-        const windDirectionValue = await windDirectionChar.readValue();
-        const windDirection = windDirectionValue.getFloat32(0, true);
-        dataFields.windDirection.textContent = windDirection.toFixed(2);
+        for (const [key, char] of Object.entries(characteristics)) {
+          const value = await char.readValue();
+          const parsedValue = new DataView(value.buffer).getFloat32(0, true);
+          dataFields[key].textContent = parsedValue.toFixed(2);
 
-        // Wind Speed
-        const windSpeedValue = await windSpeedChar.readValue();
-        const windSpeed = windSpeedValue.getFloat32(0, true);
-        dataFields.windSpeed.textContent = windSpeed.toFixed(2);
-
-        // Gust Speed
-        const gustSpeedValue = await gustSpeedChar.readValue();
-        const gustSpeed = gustSpeedValue.getFloat32(0, true);
-        dataFields.gustSpeed.textContent = gustSpeed.toFixed(2);
-
-        // Temperature
-        const temperatureValue = await temperatureChar.readValue();
-        const temperature = temperatureValue.getFloat32(0, true);
-        dataFields.temperature.textContent = temperature.toFixed(2);
-
-        // Humidity
-        const humidityValue = await humidityChar.readValue();
-        const humidity = humidityValue.getFloat32(0, true);
-        dataFields.humidity.textContent = humidity.toFixed(2);
-
-        // Pressure
-        const pressureValue = await pressureChar.readValue();
-        const pressure = pressureValue.getFloat32(0, true);
-        dataFields.pressure.textContent = pressure.toFixed(2);
-
-        // Battery Voltage
-        const batteryVoltageValue = await batteryVoltageChar.readValue();
-        const batteryVoltage = batteryVoltageValue.getFloat32(0, true);
-        dataFields.batteryVoltage.textContent = batteryVoltage.toFixed(2);
-
-        // Solar Voltage
-        const solarVoltageValue = await solarVoltageChar.readValue();
-        const solarVoltage = solarVoltageValue.getFloat32(0, true);
-        dataFields.solarVoltage.textContent = solarVoltage.toFixed(2);
+          // Update Graph for Wind Speed
+          if (key === "windSpeed") {
+            const now = new Date().toLocaleTimeString();
+            windGraph.data.labels.push(now);
+            windGraph.data.datasets[0].data.push(parsedValue);
+            windGraph.update();
+          }
+        }
       } catch (error) {
         console.error("Update Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
       }
+    }
+
+    async function fetchStoredData() {
+      // Simulate fetching stored data from the device (replace with BLE characteristic logic)
+      console.log("Fetching stored data...");
     }
   </script>
 </body>
