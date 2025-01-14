@@ -46,7 +46,7 @@
     <p><strong>Temperature:</strong> <span id="temperature">N/A</span> °C</p>
     <p><strong>Humidity:</strong> <span id="humidity">N/A</span> %</p>
     <p><strong>Pressure:</strong> <span id="pressure">N/A</span> hPa</p>
-    <p><strong>Battery Voltage:</strong> <span id="batteryVoltage">N/A</span> V</p>
+    <!-- Removed Battery Voltage -->
     <p><strong>Solar Voltage:</strong> <span id="solarVoltage">N/A</span> V</p>
   </div>
 
@@ -76,7 +76,7 @@
       temperature: document.getElementById("temperature"),
       humidity: document.getElementById("humidity"),
       pressure: document.getElementById("pressure"),
-      batteryVoltage: document.getElementById("batteryVoltage"),
+      // Removed batteryVoltage here
       solarVoltage: document.getElementById("solarVoltage"),
     };
 
@@ -106,9 +106,8 @@
         // Request BLE device
         device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: false,
-          filters: [{ name: "TiltWind" }],
+          filters: [{ name: "TiltWind" }],  // Your device's name
           optionalServices: [
-            "0000180f-0000-1000-8000-00805f9b34fb", // Battery Service
             "0000180a-0000-1000-8000-00805f9b34fb"  // Device Information Service
           ]
         });
@@ -120,9 +119,6 @@
         disconnectButton.disabled = false;
 
         // Access Services and Characteristics
-        const batteryService = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
-        characteristics.batteryVoltage = await batteryService.getCharacteristic("00002a19-0000-1000-8000-00805f9b34fb");
-
         const deviceInfoService = await server.getPrimaryService("0000180a-0000-1000-8000-00805f9b34fb");
         characteristics.solarVoltage = await deviceInfoService.getCharacteristic("00002a6e-0000-1000-8000-00805f9b34fb");
         characteristics.windDirection = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
