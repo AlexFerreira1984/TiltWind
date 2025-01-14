@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TiltWind BLE Monitor</title>
+  <title>TiltWind BLE Monitor V2</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -43,9 +43,7 @@
     <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span>°</p>
     <p><strong>Wind Speed:</strong> <span id="windSpeed">N/A</span> m/s</p>
     <p><strong>Gust Speed:</strong> <span id="gustSpeed">N/A</span> m/s</p>
-    <p><strong>Temperature:</strong> <span id="temperature">N/A</span> °C</p>
-    <p><strong>Humidity:</strong> <span id="humidity">N/A</span> %</p>
-    <p><strong>Pressure:</strong> <span id="pressure">N/A</span> hPa</p>
+    <!-- Removed Temperature and Pressure -->
     <p><strong>Solar Voltage:</strong> <span id="solarVoltage">N/A</span> V</p>
   </div>
 
@@ -72,9 +70,6 @@
       windDirection: document.getElementById("windDirection"),
       windSpeed: document.getElementById("windSpeed"),
       gustSpeed: document.getElementById("gustSpeed"),
-      temperature: document.getElementById("temperature"),
-      humidity: document.getElementById("humidity"),
-      pressure: document.getElementById("pressure"),
       solarVoltage: document.getElementById("solarVoltage"),
     };
 
@@ -104,8 +99,9 @@
         // Request BLE device
         device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: false,
-          filters: [{ name: "TiltWind" }],  // Your device's name
+          filters: [{ name: "TiltWind" }],
           optionalServices: [
+            "0000aaaa-0000-1000-8000-00805f9b34fb", // Custom Wind Service
             "0000180a-0000-1000-8000-00805f9b34fb"  // Device Information Service
           ]
         });
@@ -117,10 +113,10 @@
         disconnectButton.disabled = false;
 
         // Access Services and Characteristics
-        const deviceInfoService = await server.getPrimaryService("0000180a-0000-1000-8000-00805f9b34fb");
-        characteristics.windDirection = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
-        characteristics.windSpeed = await deviceInfoService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
-        characteristics.gustSpeed = await deviceInfoService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
+        const windService = await server.getPrimaryService("0000aaaa-0000-1000-8000-00805f9b34fb");
+        characteristics.windDirection = await windService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
+        characteristics.windSpeed = await windService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
+        characteristics.gustSpeed = await windService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
 
         // Read and Update Live Values
         updateValues();
