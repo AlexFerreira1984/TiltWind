@@ -106,7 +106,7 @@
           acceptAllDevices: false,
           filters: [{ name: "TiltWind" }],  // Your device's name
           optionalServices: [
-            "0000180f-0000-1000-8000-00805f9b34fb"  // Battery Service
+            "0000180a-0000-1000-8000-00805f9b34fb"  // Device Information Service
           ]
         });
 
@@ -117,10 +117,10 @@
         disconnectButton.disabled = false;
 
         // Access Services and Characteristics
-        const batteryService = await server.getPrimaryService("0000180f-0000-1000-8000-00805f9b34fb");
-        characteristics.windDirection = await batteryService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
-        characteristics.windSpeed = await batteryService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
-        characteristics.gustSpeed = await batteryService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
+        const deviceInfoService = await server.getPrimaryService("0000180a-0000-1000-8000-00805f9b34fb");
+        characteristics.windDirection = await deviceInfoService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
+        characteristics.windSpeed = await deviceInfoService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
+        characteristics.gustSpeed = await deviceInfoService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
 
         // Read and Update Live Values
         updateValues();
