@@ -3,18 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V7 – POLLING</title>
+  <title>TILT WIND BLE MONITOR V8</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    h1 { text-align: center; }
-    #status { font-size: 18px; color: #007BFF; }
+    h1 { text-align: center; color: #333; }
+    #status { font-size: 18px; margin-top: 10px; color: #007BFF; }
     .data, .actions, #feedback { margin-top: 20px; font-size: 16px; }
-    button { padding: 10px 20px; margin: 5px; font-size: 16px; }
-    #feedback { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; background: #f9f9f9; white-space: pre-wrap; }
+    button { margin: 5px; padding: 10px 20px; font-size: 16px; }
+    input { padding: 5px; font-size: 16px; width: 80px; }
+    #feedback { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; white-space: pre-wrap; background: #f9f9f9; }
   </style>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V7 – POLLING</h1>
+  <h1>TILT WIND BLE MONITOR V8</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -27,10 +28,15 @@
   
   <div class="actions">
     <button id="tareButton">Tare</button>
+    <br>
+    <label for="calSpeed">Calib Wind Speed (m/s):</label>
+    <input type="number" id="calSpeed" step="0.1" value="2.5">
+    <br>
     <button id="calibrateNorthButton">Calibrate North</button>
     <button id="calibrateSouthButton">Calibrate South</button>
     <button id="calibrateEastButton">Calibrate East</button>
     <button id="calibrateWestButton">Calibrate West</button>
+    <br>
     <button id="startButton">Start Printing</button>
     <button id="stopButton">Stop Printing</button>
   </div>
@@ -42,11 +48,11 @@
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
     const feedbackDiv = document.getElementById("feedback");
-    
+
     const windDirectionField = document.getElementById("windDirection");
     const windSpeedField = document.getElementById("windSpeed");
     const gustSpeedField = document.getElementById("gustSpeed");
-    
+
     const tareButton = document.getElementById("tareButton");
     const calibrateNorthButton = document.getElementById("calibrateNorthButton");
     const calibrateSouthButton = document.getElementById("calibrateSouthButton");
@@ -54,8 +60,9 @@
     const calibrateWestButton = document.getElementById("calibrateWestButton");
     const startButton = document.getElementById("startButton");
     const stopButton = document.getElementById("stopButton");
-    
-    // UUIDs must match firmware V7 – POLLING
+    const calSpeedInput = document.getElementById("calSpeed");
+
+    // UUIDs must match firmware V8
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
@@ -78,7 +85,7 @@
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
         
-        // Start polling the TX characteristic once per second.
+        // Poll the TX characteristic once per second.
         setInterval(updateValues, 1000);
       } catch (error) {
         console.error("Connection Error:", error);
@@ -98,10 +105,22 @@
     });
     
     tareButton.addEventListener("click", () => sendCommand("T"));
-    calibrateNorthButton.addEventListener("click", () => sendCommand("C N"));
-    calibrateSouthButton.addEventListener("click", () => sendCommand("C S"));
-    calibrateEastButton.addEventListener("click", () => sendCommand("C E"));
-    calibrateWestButton.addEventListener("click", () => sendCommand("C W"));
+    calibrateNorthButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C N:" + calSpeed);
+    });
+    calibrateSouthButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C S:" + calSpeed);
+    });
+    calibrateEastButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C E:" + calSpeed);
+    });
+    calibrateWestButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C W:" + calSpeed);
+    });
     startButton.addEventListener("click", () => sendCommand("S"));
     stopButton.addEventListener("click", () => sendCommand("X"));
     
@@ -120,18 +139,16 @@
     
     async function updateValues() {
       try {
-        // Poll the TX characteristic for the latest sensor data.
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
         logFeedback("Polled value: " + receivedText);
         
-        // Parse the received text
-        if (receivedText === "NO_WIND" || receivedText === "NO_WIND") {
+        // Parse sensor update format: "WS:xx.xx,DIR:yy.yy,CARD:ZZZ"
+        if (receivedText === "NO_WIND") {
           windSpeedField.textContent = "0.00";
           windDirectionField.textContent = "N/A";
           gustSpeedField.textContent = "N/A";
         } else if (receivedText.startsWith("WS:")) {
-          // Expected format: WS:xx.xx,DIR:yy.yy,CARD:ZZZ
           let regex = /^WS:([0-9.]+),DIR:([0-9.]+),CARD:([A-Z]+)$/;
           let matches = receivedText.match(regex);
           if (matches) {
