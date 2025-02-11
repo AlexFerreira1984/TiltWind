@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V11</title>
+  <title>TILT WIND BLE MONITOR V11 Revised</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V11</h1>
+  <h1>TILT WIND BLE MONITOR V11 Revised</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -44,7 +44,7 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
-  <!-- Graph containers -->
+  <!-- Graphs for history logs -->
   <div class="chart-container">
     <canvas id="avgSpeedChart"></canvas>
   </div>
@@ -58,12 +58,16 @@
   <div id="feedback">Feedback:</div>
   
   <script>
-    // UUIDs must match your firmware
+    // UUIDs – these must match your firmware
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
+    
+    // Polling flags to avoid overlapping operations.
+    let isReading = false;
+    let isHistoryMode = false; // When true, pause normal polling.
     
     // Element references
     const connectButton = document.getElementById("connectButton");
@@ -87,7 +91,7 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // Create Chart.js graphs for history data.
+    // Create Chart.js graphs for history.
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
@@ -104,7 +108,7 @@
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Log messages to the feedback area.
+    // Log feedback to the feedback div.
     function logFeedback(message) {
       const timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
@@ -134,14 +138,20 @@
       sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
     }
     
-    // Poll TX characteristic every second.
+    // Regular polling of TX characteristic every second.
     async function updateValues() {
+      if (isHistoryMode) return;
+      if (isReading) return;
+      isReading = true;
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
         logFeedback("Polled value: " + receivedText);
-        // If history data is received, do not update sensor fields.
-        if (receivedText.startsWith("History:")) return;
+        // If the received text is history data, skip updating sensor fields.
+        if (receivedText.startsWith("History:")) {
+          isReading = false;
+          return;
+        }
         if (receivedText === "NO_WIND") {
           windSpeedField.textContent = "0.00";
           windDirectionField.textContent = "N/A";
@@ -158,11 +168,12 @@
       } catch (error) {
         logFeedback("Update Error: " + error);
       }
+      isReading = false;
     }
     
     // Parse history string and update charts.
     function updateHistoryCharts(historyStr) {
-      // Expected history record format (each line):
+      // Expected format (each line):
       // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
       const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && !line.startsWith("History:"));
       const labels = [];
@@ -185,7 +196,6 @@
           }
         }
       });
-      
       avgSpeedChart.data.labels = labels;
       avgSpeedChart.data.datasets[0].data = avgData;
       avgSpeedChart.update();
@@ -199,7 +209,7 @@
       directionChart.update();
     }
     
-    // When history is requested, poll the TX characteristic after a delay.
+    // When history is requested, suspend regular polling, then update charts.
     async function updateHistoryData() {
       try {
         const value = await txChar.readValue();
@@ -210,10 +220,12 @@
         }
       } catch (error) {
         logFeedback("History update error: " + error);
+      } finally {
+        isHistoryMode = false;
       }
     }
     
-    // BLE connection.
+    // BLE connection handling.
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
@@ -270,16 +282,17 @@
     stopButton.addEventListener("click", () => sendCommand("X"));
     setTimeButton.addEventListener("click", () => {
       const t = setTimeInput.value.trim();
-      if (t.length === 8) {  // expecting HH:MM:SS
+      if (t.length === 8) {
         sendCommand("TIME:" + t);
       } else {
         logFeedback("Invalid time format. Use HH:MM:SS");
       }
     });
     getHistoryButton.addEventListener("click", () => {
+      // Enter history mode: suspend normal polling.
+      isHistoryMode = true;
       sendCommand("H");
-      // After 3 sec delay, fetch history data and update charts.
-      setTimeout(updateHistoryData, 3000);
+      setTimeout(updateHistoryData, 3000); // wait 3 sec before fetching history data
     });
   </script>
 </body>
