@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V10</title>
+  <title>TILT WIND BLE MONITOR V11</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
-    #status { font-size: 18px; color: #007BFF; }
+    #status { font-size: 18px; color: #007BFF; margin-bottom: 10px; }
     .data, .actions, #feedback { margin-top: 20px; font-size: 16px; }
     button { padding: 10px 20px; margin: 5px; font-size: 16px; }
     input { padding: 5px; font-size: 16px; width: 100px; }
     #feedback { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; background: #f9f9f9; white-space: pre-wrap; }
-    canvas { margin-top: 20px; }
+    .chart-container { width: 400px; height: 200px; margin-top: 20px; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V10</h1>
+  <h1>TILT WIND BLE MONITOR V11</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -50,16 +50,19 @@
   </div>
   
   <!-- Graphs for history logs -->
-  <div class="graphs">
-    <canvas id="avgSpeedChart" width="400" height="200"></canvas>
-    <canvas id="maxSpeedChart" width="400" height="200"></canvas>
-    <canvas id="directionChart" width="400" height="200"></canvas>
+  <div class="chart-container">
+    <canvas id="avgSpeedChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="maxSpeedChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="directionChart"></canvas>
   </div>
   
   <div id="feedback">Feedback:</div>
   
   <script>
-    // Element references
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -81,38 +84,32 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // UUIDs (must match firmware V10)
+    // UUIDs (must match firmware V11)
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
     
-    // Create three Chart.js graphs for history logs.
-    const avgSpeedCtx = document.getElementById("avgSpeedChart").getContext("2d");
-    const maxSpeedCtx = document.getElementById("maxSpeedChart").getContext("2d");
-    const dirCtx = document.getElementById("directionChart").getContext("2d");
-    
-    const avgSpeedChart = new Chart(avgSpeedCtx, {
+    // Create Chart.js graphs.
+    const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
-      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Speed (km/h)' }}}}
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Avg Speed (km/h)' }}}}
     });
-    
-    const maxSpeedChart = new Chart(maxSpeedCtx, {
+    const maxSpeedChart = new Chart(document.getElementById("maxSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Max Speed (km/h)', data: [], borderColor: 'red', fill: false }] },
-      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Speed (km/h)' }}}}
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Max Speed (km/h)' }}}}
     });
-    
-    const dirChart = new Chart(dirCtx, {
+    const directionChart = new Chart(document.getElementById("directionChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Direction (°)', data: [], borderColor: 'green', fill: false }] },
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Automatically send OS time upon connection.
-    function sendTimeSync() {
+    // Automatically sync time upon connection using OS time.
+    function autoSyncTime() {
       let now = new Date();
       let hh = ("0" + now.getHours()).slice(-2);
       let mm = ("0" + now.getMinutes()).slice(-2);
@@ -121,13 +118,20 @@
       sendCommand("TIME:" + timeStr);
     }
     
-    // Polling function to update sensor values from TX characteristic.
+    // Poll TX characteristic every second.
     async function updateValues() {
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
         logFeedback("Polled value: " + receivedText);
         
+        // If the received text is history (starts with "History:"), do nothing here.
+        if (receivedText.startsWith("History:")) {
+          // History will be handled via getHistory button.
+          return;
+        }
+        
+        // Otherwise, assume sensor update.
         if (receivedText === "NO_WIND") {
           windSpeedField.textContent = "0.00";
           windDirectionField.textContent = "N/A";
@@ -146,7 +150,7 @@
       }
     }
     
-    // BLE connection
+    // BLE connection handling.
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
@@ -163,9 +167,8 @@
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
         
-        // Immediately sync time using the browser's OS time.
-        sendTimeSync();
-        
+        // Auto-sync time immediately.
+        autoSyncTime();
         // Start polling TX characteristic every second.
         setInterval(updateValues, 1000);
       } catch (error) {
@@ -185,7 +188,7 @@
       }
     });
     
-    // Command button handlers
+    // Command button handlers.
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => {
       const calSpeed = calSpeedInput.value;
@@ -235,116 +238,79 @@
     }
     
     // ---------------------
-    // Graphing History Data
+    // Graphing History Data with Chart.js
     // ---------------------
-    // We create one canvas with three datasets (avg speed, max speed, direction).
-    const historyCtx = document.createElement("canvas");
-    historyCtx.width = 800;
-    historyCtx.height = 400;
-    document.body.appendChild(historyCtx);
-    const historyChart = new Chart(historyCtx, {
+    const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
-      data: {
-        labels: [], // time labels (HH:MM:SS)
-        datasets: [
-          { label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false },
-          { label: 'Max Speed (km/h)', data: [], borderColor: 'red', fill: false },
-          { label: 'Direction (°)', data: [], borderColor: 'green', fill: false }
-        ]
-      },
-      options: {
-        scales: {
-          x: { title: { display: true, text: 'Time' } },
-          y: { title: { display: true, text: 'Value' } }
-        }
-      }
+      data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Avg Speed (km/h)' }}}}
+    });
+    const maxSpeedChart = new Chart(document.getElementById("maxSpeedChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Max Speed (km/h)', data: [], borderColor: 'red', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Max Speed (km/h)' }}}}
+    });
+    const directionChart = new Chart(document.getElementById("directionChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Direction (°)', data: [], borderColor: 'green', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Parse history string received from the device and update the chart.
-    function updateHistoryChart(historyStr) {
-      // Expected history format (each line):
+    // Parse history string and update the charts.
+    function updateHistoryCharts(historyStr) {
+      // Expected history record format (each line):
       // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
-      const lines = historyStr.split('\n');
+      const lines = historyStr.split("\n").filter(line => line.trim().length > 0);
       const labels = [];
-      const avgSpeeds = [];
-      const maxSpeeds = [];
-      const directions = [];
-      
+      const avgData = [];
+      const maxData = [];
+      const dirData = [];
       lines.forEach(line => {
-        if (line.trim().length > 0 && line.indexOf('-') > 0) {
-          const parts = line.split('-');
-          const timeStr = parts[0].trim();
+        if (line.startsWith("History:")) return; // Skip header line if present.
+        const parts = line.split(" - ");
+        if (parts.length >= 2) {
+          const timePart = parts[0].trim();
           const dataPart = parts[1].trim();
-          // Extract numbers using regex.
           const avgMatch = dataPart.match(/Avg:([0-9.]+)/);
           const maxMatch = dataPart.match(/Max:([0-9.]+)/);
           const dirMatch = dataPart.match(/Dir:([0-9.]+)/);
           if (avgMatch && maxMatch && dirMatch) {
-            labels.push(timeStr);
-            avgSpeeds.push(parseFloat(avgMatch[1]));
-            maxSpeeds.push(parseFloat(maxMatch[1]));
-            directions.push(parseFloat(dirMatch[1]));
+            labels.push(timePart);
+            avgData.push(parseFloat(avgMatch[1]));
+            maxData.push(parseFloat(maxMatch[1]));
+            dirData.push(parseFloat(dirMatch[1]));
           }
         }
       });
       
-      historyChart.data.labels = labels;
-      historyChart.data.datasets[0].data = avgSpeeds;
-      historyChart.data.datasets[1].data = maxSpeeds;
-      historyChart.data.datasets[2].data = directions;
-      historyChart.update();
+      avgSpeedChart.data.labels = labels;
+      avgSpeedChart.data.datasets[0].data = avgData;
+      avgSpeedChart.update();
+      
+      maxSpeedChart.data.labels = labels;
+      maxSpeedChart.data.datasets[0].data = maxData;
+      maxSpeedChart.update();
+      
+      directionChart.data.labels = labels;
+      directionChart.data.datasets[0].data = dirData;
+      directionChart.update();
     }
     
-    // When history is received from the device (via a "H" command), parse and update charts.
-    function handleHistoryData(receivedText) {
-      logFeedback("History received:\n" + receivedText);
-      updateHistoryChart(receivedText);
-    }
-    
-    // Modify the polling updateValues() function to also check if the polled value starts with "History:".
-    async function updateValues() {
+    // When history is received (via the "H" command), update the charts.
+    async function updateHistoryData() {
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
-        logFeedback("Polled value: " + receivedText);
-        
-        // Check if this is a history record response (starts with "History:")
         if (receivedText.startsWith("History:")) {
-          handleHistoryData(receivedText);
-        } else {
-          // Otherwise, assume it's the sensor update.
-          if (receivedText === "NO_WIND") {
-            windSpeedField.textContent = "0.00";
-            windDirectionField.textContent = "N/A";
-            gustSpeedField.textContent = "N/A";
-          } else if (receivedText.startsWith("WS:")) {
-            let regex = /^WS:([0-9.]+),DIR:([0-9.]+),CARD:([A-Z]+)$/;
-            let matches = receivedText.match(regex);
-            if (matches) {
-              windSpeedField.textContent = matches[1];
-              windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
-              gustSpeedField.textContent = "N/A";
-            }
-          }
+          logFeedback("History received:\n" + receivedText);
+          updateHistoryCharts(receivedText);
         }
       } catch (error) {
-        logFeedback("Update Error: " + error);
+        logFeedback("History update error: " + error);
       }
     }
     
-    // Automatically sync time upon connection using OS time.
-    function autoSyncTime() {
-      let now = new Date();
-      let hh = ("0" + now.getHours()).slice(-2);
-      let mm = ("0" + now.getMinutes()).slice(-2);
-      let ss = ("0" + now.getSeconds()).slice(-2);
-      sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
-    }
-    
-    // After connection, automatically sync time.
-    connectButton.addEventListener("click", () => {
-      setTimeout(autoSyncTime, 2000); // wait 2 sec after connection
-    });
+    // Optionally, poll history data periodically (if desired) or let the user click "Get History".
     
   </script>
 </body>
