@@ -27,6 +27,9 @@
       padding: 10px 20px;
       font-size: 16px;
     }
+    canvas {
+      margin-top: 20px;
+    }
     #feedback {
       margin-top: 20px;
       font-size: 16px;
@@ -36,9 +39,6 @@
       overflow-y: auto;
       white-space: pre-wrap;
       background: #f9f9f9;
-    }
-    canvas {
-      margin-top: 20px;
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -69,7 +69,6 @@
   <div id="feedback">Feedback:</div>
 
   <script>
-    // Get elements
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -79,17 +78,10 @@
     const startButton = document.getElementById("startButton");
     const stopButton = document.getElementById("stopButton");
 
-    // Data display fields (if your device sends numeric values, update these accordingly)
-    const dataFields = {
-      windDirection: document.getElementById("windDirection"),
-      windSpeed: document.getElementById("windSpeed"),
-      gustSpeed: document.getElementById("gustSpeed"),
-    };
-
-    // UUIDs must match those configured on your device
-    const WIND_SERVICE_UUID = "0000aaaa-0000-1000-8000-00805f9b34fb";  // Example: custom wind service
-    const TX_CHAR_UUID = "0000aaaa-0001-1000-8000-00805f9b34fb";       // TX characteristic (device -> browser)
-    const RX_CHAR_UUID = "0000aaaa-0002-1000-8000-00805f9b34fb";       // RX characteristic (browser -> device)
+    // Update these UUIDs to match your device:
+    const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
+    const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
+    const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
 
     let device, server, windService, txChar, rxChar;
     
@@ -109,7 +101,6 @@
       },
     });
 
-    // Connect button handler
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
@@ -118,15 +109,14 @@
           optionalServices: [WIND_SERVICE_UUID]
         });
         server = await device.gatt.connect();
-        windService = await server.getPrimaryService(WIND_SERVICE_UUID);
-        txChar = await windService.getCharacteristic(TX_CHAR_UUID);
-        rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
-        // Subscribe to notifications from TX characteristic
-        await txChar.startNotifications();
-        txChar.addEventListener('characteristicvaluechanged', handleNotifications);
         statusDiv.textContent = "Status: Connected";
         connectButton.disabled = true;
         disconnectButton.disabled = false;
+        windService = await server.getPrimaryService(WIND_SERVICE_UUID);
+        txChar = await windService.getCharacteristic(TX_CHAR_UUID);
+        rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
+        await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', handleNotifications);
         logFeedback("Connected to TiltWind!");
       } catch (error) {
         console.error("Connection Error:", error);
@@ -135,7 +125,6 @@
       }
     });
 
-    // Disconnect button handler
     disconnectButton.addEventListener("click", () => {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
@@ -146,7 +135,7 @@
       }
     });
 
-    // Button command handlers: send commands via RX characteristic
+    // Button command handlers: send commands via the RX characteristic
     tareButton.addEventListener("click", () => {
       sendCommand("T");
     });
@@ -173,17 +162,13 @@
       }
     }
 
-    // Handle notifications from TX characteristic (device -> browser)
     function handleNotifications(event) {
       let value = event.target.value;
-      // Assume the value is text (UTF-8 encoded)
       let feedback = new TextDecoder().decode(value);
       logFeedback("Device: " + feedback);
-      // Optionally, update dataFields or graph if numeric data is sent
-      // For example, if the device sends windSpeed as a float, parse and update graph.
+      // Optionally, update data fields or graph if numeric values are sent
     }
 
-    // Log feedback to the page (append messages)
     function logFeedback(message) {
       let timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
