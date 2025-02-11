@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TiltWind BLE Monitor V2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TILT WIND BLE MONITOR V6</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -18,172 +18,163 @@
       margin-top: 10px;
       color: #007BFF;
     }
-    .data, .graph {
+    .data, .actions, #feedback {
       margin-top: 20px;
       font-size: 16px;
     }
     button {
-      margin-right: 10px;
+      margin: 5px;
       padding: 10px 20px;
       font-size: 16px;
     }
-    canvas {
-      margin-top: 20px;
+    #feedback {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 150px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      background: #f9f9f9;
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TiltWind BLE Monitor</h1>
+  <h1>TILT WIND BLE MONITOR V6</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
   
   <div class="data">
-    <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span>°</p>
+    <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span></p>
     <p><strong>Wind Speed:</strong> <span id="windSpeed">N/A</span> m/s</p>
     <p><strong>Gust Speed:</strong> <span id="gustSpeed">N/A</span> m/s</p>
-    <!-- Removed Temperature and Pressure -->
   </div>
-
+  
   <div class="actions">
     <button id="tareButton">Tare</button>
-    <button id="calibrateButton">Calibrate</button>
-    <button id="startButton">Start</button>
-    <button id="stopButton">Stop</button>
+    <button id="calibrateNorthButton">Calibrate North</button>
+    <button id="calibrateSouthButton">Calibrate South</button>
+    <button id="calibrateEastButton">Calibrate East</button>
+    <button id="calibrateWestButton">Calibrate West</button>
+    <button id="startButton">Start Printing</button>
+    <button id="stopButton">Stop Printing</button>
   </div>
-
-  <div class="graph">
-    <canvas id="windGraph" width="400" height="200"></canvas>
-  </div>
-
+  
+  <div id="feedback">Feedback:</div>
+  
   <script>
+    // Element references
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
+    const feedbackDiv = document.getElementById("feedback");
+
+    // Data display fields
+    const windDirectionField = document.getElementById("windDirection");
+    const windSpeedField = document.getElementById("windSpeed");
+    const gustSpeedField = document.getElementById("gustSpeed");
+    
+    // Command buttons
     const tareButton = document.getElementById("tareButton");
-    const calibrateButton = document.getElementById("calibrateButton");
+    const calibrateNorthButton = document.getElementById("calibrateNorthButton");
+    const calibrateSouthButton = document.getElementById("calibrateSouthButton");
+    const calibrateEastButton = document.getElementById("calibrateEastButton");
+    const calibrateWestButton = document.getElementById("calibrateWestButton");
     const startButton = document.getElementById("startButton");
     const stopButton = document.getElementById("stopButton");
-    const dataFields = {
-      windDirection: document.getElementById("windDirection"),
-      windSpeed: document.getElementById("windSpeed"),
-      gustSpeed: document.getElementById("gustSpeed"),
-      solarVoltage: document.getElementById("solarVoltage"),
-    };
-
-    let device, server, characteristics = {};
-
-    const windGraphCtx = document.getElementById("windGraph").getContext("2d");
-    const windGraph = new Chart(windGraphCtx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [
-          {
-            label: "Wind Speed (m/s)",
-            data: [],
-            borderColor: "rgba(75, 192, 192, 1)",
-            borderWidth: 2,
-            fill: false,
-          },
-        ],
-      },
-    });
-
+    
+    // UUIDs (must match firmware V6)
+    const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
+    const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
+    const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
+    
+    let device, server, windService, txChar, rxChar;
+    
+    // Connect to device
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
-
-        // Request BLE device
         device = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: false,
           filters: [{ name: "TiltWind" }],
-          optionalServices: [
-            "0000aaaa-0000-1000-8000-00805f9b34fb", // Custom Wind Service
-            "0000180a-0000-1000-8000-00805f9b34fb"  // Device Information Service
-          ]
+          optionalServices: [WIND_SERVICE_UUID]
         });
-
         server = await device.gatt.connect();
+        windService = await server.getPrimaryService(WIND_SERVICE_UUID);
+        txChar = await windService.getCharacteristic(TX_CHAR_UUID);
+        rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
+        await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', handleNotifications);
         statusDiv.textContent = "Status: Connected";
-
         connectButton.disabled = true;
         disconnectButton.disabled = false;
-
-        // Access Services and Characteristics
-        const windService = await server.getPrimaryService("0000aaaa-0000-1000-8000-00805f9b34fb");
-        characteristics.windDirection = await windService.getCharacteristic("00002a6d-0000-1000-8000-00805f9b34fb");
-        characteristics.windSpeed = await windService.getCharacteristic("00002a70-0000-1000-8000-00805f9b34fb");
-        characteristics.gustSpeed = await windService.getCharacteristic("00002a71-0000-1000-8000-00805f9b34fb");
-
-        // Read and Update Live Values
-        updateValues();
-        setInterval(updateValues, 10000);
+        logFeedback("Connected to TiltWind!");
       } catch (error) {
-        console.error("Error:", error);
+        console.error("Connection Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
+        logFeedback("Error: " + error.message);
       }
     });
-
+    
+    // Disconnect
     disconnectButton.addEventListener("click", () => {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
         statusDiv.textContent = "Status: Disconnected";
         connectButton.disabled = false;
         disconnectButton.disabled = true;
-
-        // Clear Displayed Values
-        for (const key in dataFields) {
-          dataFields[key].textContent = "N/A";
-        }
+        logFeedback("Disconnected.");
       }
     });
-
-    tareButton.addEventListener("click", () => {
-      // Implement tare functionality (BLE command to tare system)
-      console.log("Tare triggered");
-    });
-
-    calibrateButton.addEventListener("click", () => {
-      // Implement calibration functionality (BLE command to start calibration)
-      console.log("Calibration triggered");
-    });
-
-    startButton.addEventListener("click", () => {
-      // Implement start functionality (BLE command to start measurements)
-      console.log("Start triggered");
-    });
-
-    stopButton.addEventListener("click", () => {
-      // Implement stop functionality (BLE command to stop measurements)
-      console.log("Stop triggered");
-    });
-
-    async function updateValues() {
+    
+    // Command button handlers – send commands via RX characteristic
+    tareButton.addEventListener("click", () => sendCommand("T"));
+    calibrateNorthButton.addEventListener("click", () => sendCommand("C N"));
+    calibrateSouthButton.addEventListener("click", () => sendCommand("C S"));
+    calibrateEastButton.addEventListener("click", () => sendCommand("C E"));
+    calibrateWestButton.addEventListener("click", () => sendCommand("C W"));
+    startButton.addEventListener("click", () => sendCommand("S"));
+    stopButton.addEventListener("click", () => sendCommand("X"));
+    
+    async function sendCommand(command) {
+      if (!rxChar) {
+        logFeedback("RX characteristic not found!");
+        return;
+      }
       try {
-        for (const [key, char] of Object.entries(characteristics)) {
-          const value = await char.readValue();
-          const parsedValue = new DataView(value.buffer).getFloat32(0, true);
-          dataFields[key].textContent = parsedValue.toFixed(2);
-
-          // Update Graph for Wind Speed
-          if (key === "windSpeed") {
-            const now = new Date().toLocaleTimeString();
-            windGraph.data.labels.push(now);
-            windGraph.data.datasets[0].data.push(parsedValue);
-            windGraph.update();
-          }
-        }
+        logFeedback("Sending command: " + command);
+        await rxChar.writeValue(new TextEncoder().encode(command));
       } catch (error) {
-        console.error("Update Error:", error);
-        statusDiv.textContent = "Status: Error - " + error.message;
+        logFeedback("Send command error: " + error);
       }
     }
-
-    async function fetchStoredData() {
-      // Simulate fetching stored data from the device (replace with BLE characteristic logic)
-      console.log("Fetching stored data...");
+    
+    function handleNotifications(event) {
+      const value = event.target.value;
+      const receivedText = new TextDecoder().decode(value);
+      logFeedback("Device: " + receivedText);
+      
+      // Check if the notification is a sensor update:
+      // Expected formats:
+      // "NO_WIND" or "WS:xx.xx,DIR:yy.yy,CARD:ZZZ"
+      if (receivedText === "NO_WIND") {
+        windSpeedField.textContent = "0.00";
+        windDirectionField.textContent = "N/A";
+        gustSpeedField.textContent = "N/A";
+      } else if (receivedText.startsWith("WS:")) {
+        let regex = /^WS:([0-9.]+),DIR:([0-9.]+),CARD:([A-Z]+)$/;
+        let matches = receivedText.match(regex);
+        if (matches) {
+          windSpeedField.textContent = matches[1];
+          windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
+          gustSpeedField.textContent = "N/A";
+        }
+      }
+      // Other notifications (e.g. calibration feedback) are only logged.
+    }
+    
+    function logFeedback(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
+      feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
     }
   </script>
 </body>
