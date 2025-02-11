@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TiltWind BLE Monitor V2</title>
+  <title>TILT WIND BLE MONITOR V3</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -18,7 +18,7 @@
       margin-top: 10px;
       color: #007BFF;
     }
-    .data, .actions, .graph, #feedback {
+    .data, .actions, #feedback {
       margin-top: 20px;
       font-size: 16px;
     }
@@ -32,17 +32,13 @@
       padding: 10px;
       height: 150px;
       overflow-y: auto;
-      white-space: pre-wrap;
       background: #f9f9f9;
-    }
-    canvas {
-      margin-top: 20px;
+      white-space: pre-wrap;
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TiltWind BLE Monitor</h1>
+  <h1>TILT WIND BLE MONITOR V3</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -59,12 +55,9 @@
     <button id="calibrateSouthButton">Calibrate South</button>
     <button id="calibrateEastButton">Calibrate East</button>
     <button id="calibrateWestButton">Calibrate West</button>
-    <button id="startButton">Start</button>
-    <button id="stopButton">Stop</button>
-  </div>
-  
-  <div class="graph">
-    <canvas id="windGraph" width="400" height="200"></canvas>
+    <!-- For calibration, no confirm button is needed because the firmware handles a 10-second routine -->
+    <button id="startButton">Start Printing</button>
+    <button id="stopButton">Stop Printing</button>
   </div>
   
   <div id="feedback">Feedback:</div>
@@ -75,15 +68,11 @@
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
     const feedbackDiv = document.getElementById("feedback");
+
+    const windDirectionField = document.getElementById("windDirection");
+    const windSpeedField = document.getElementById("windSpeed");
+    const gustSpeedField = document.getElementById("gustSpeed");
     
-    // Data display fields
-    const dataFields = {
-      windDirection: document.getElementById("windDirection"),
-      windSpeed: document.getElementById("windSpeed"),
-      gustSpeed: document.getElementById("gustSpeed")
-    };
-    
-    // Command buttons
     const tareButton = document.getElementById("tareButton");
     const calibrateNorthButton = document.getElementById("calibrateNorthButton");
     const calibrateSouthButton = document.getElementById("calibrateSouthButton");
@@ -98,22 +87,6 @@
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
-    
-    // Set up a Chart.js graph (optional)
-    const windGraphCtx = document.getElementById("windGraph").getContext("2d");
-    const windGraph = new Chart(windGraphCtx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{
-          label: "Wind Speed (m/s)",
-          data: [],
-          borderColor: "rgba(75, 192, 192, 1)",
-          borderWidth: 2,
-          fill: false,
-        }]
-      }
-    });
     
     // Connect button handler
     connectButton.addEventListener("click", async () => {
@@ -140,7 +113,7 @@
       }
     });
     
-    // Disconnect button handler
+    // Disconnect handler
     disconnectButton.addEventListener("click", () => {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
@@ -151,7 +124,7 @@
       }
     });
     
-    // Button command handlers – send commands via RX characteristic
+    // Command button handlers – send commands via the RX characteristic
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => sendCommand("C N"));
     calibrateSouthButton.addEventListener("click", () => sendCommand("C S"));
@@ -178,25 +151,25 @@
       let receivedText = new TextDecoder().decode(value);
       logFeedback("Device: " + receivedText);
       
-      // Parse the received string
+      // Update the displayed sensor values if the notification follows the expected format.
+      // Expected format: "X:xx.xx Y:yy.yy WS:zz.zz km/h, Dir:aa.aa (Cardinal)"
       if (receivedText.indexOf("No Wind Detected") >= 0) {
-        dataFields.windSpeed.textContent = "0.00";
-        dataFields.windDirection.textContent = "N/A";
-        dataFields.gustSpeed.textContent = "N/A";
+        windSpeedField.textContent = "0.00";
+        windDirectionField.textContent = "N/A";
+        gustSpeedField.textContent = "N/A";
       } else {
-        // Attempt to extract WS and Dir values using a regex:
-        // Expected format: "X:xx.xx Y:yy.yy WS:zz.zz km/h, Dir:aa.aa (Cardinal)"
+        // Try to extract WS and Dir values using a regex.
         let regex = /WS:([0-9.]+) km\/h,\s*Dir:([0-9.]+)\s*\(([^)]+)\)/;
         let matches = receivedText.match(regex);
         if (matches) {
-          dataFields.windSpeed.textContent = matches[1];
-          dataFields.windDirection.textContent = matches[2] + "° (" + matches[3] + ")";
-          dataFields.gustSpeed.textContent = "N/A";
+          windSpeedField.textContent = matches[1];
+          windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
+          gustSpeedField.textContent = "N/A";
         } else {
-          // If parsing fails, display the whole string in Wind Speed field.
-          dataFields.windSpeed.textContent = receivedText;
-          dataFields.windDirection.textContent = "N/A";
-          dataFields.gustSpeed.textContent = "N/A";
+          // If not in expected format, display the raw text in Wind Speed field.
+          windSpeedField.textContent = receivedText;
+          windDirectionField.textContent = "N/A";
+          gustSpeedField.textContent = "N/A";
         }
       }
     }
