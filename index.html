@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V11 Revised</title>
+  <title>TILT WIND BLE MONITOR V12 – Layout Tweak</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V11 Revised</h1>
+  <h1>TILT WIND BLE MONITOR V11 Revised – Layout Tweak</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -44,6 +44,10 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
+  <!-- Feedback text box placed here (after actions, before graphs) -->
+  <div id="feedback">Feedback:</div>
+  
+  <!-- Graphs for history logs -->
   <div class="chart-container">
     <canvas id="avgSpeedChart"></canvas>
   </div>
@@ -53,8 +57,6 @@
   <div class="chart-container">
     <canvas id="directionChart"></canvas>
   </div>
-  
-  <div id="feedback">Feedback:</div>
   
   <script>
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
@@ -86,7 +88,6 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // Create charts.
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
@@ -162,7 +163,7 @@
     }
     
     function updateHistoryCharts(historyStr) {
-      // Expected format: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°" per line.
+      // Expected history record format per line: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
       const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && !line.startsWith("History:"));
       const labels = [];
       const avgData = [];
@@ -246,7 +247,6 @@
       }
     });
     
-    // Command button handlers.
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => {
       const calSpeed = calSpeedInput.value;
