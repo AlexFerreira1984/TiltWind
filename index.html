@@ -229,7 +229,7 @@
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
         autoSyncTime();
-        setInterval(updateValues, 1000);
+        setInterval(updateValues, 10000);
       } catch (error) {
         console.error("Connection Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
