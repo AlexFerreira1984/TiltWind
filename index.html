@@ -44,7 +44,6 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
-  <!-- Graphs for history logs -->
   <div class="chart-container">
     <canvas id="avgSpeedChart"></canvas>
   </div>
@@ -58,18 +57,14 @@
   <div id="feedback">Feedback:</div>
   
   <script>
-    // UUIDs – these must match your firmware
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
-    
-    // Polling flags to avoid overlapping operations.
     let isReading = false;
-    let isHistoryMode = false; // When true, pause normal polling.
+    let isHistoryMode = false;
     
-    // Element references
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -91,7 +86,7 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // Create Chart.js graphs for history.
+    // Create charts.
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
@@ -108,14 +103,12 @@
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Log feedback to the feedback div.
     function logFeedback(message) {
       const timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
       feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
     }
     
-    // Send command via RX characteristic.
     async function sendCommand(command) {
       if (!rxChar) {
         logFeedback("RX characteristic not found!");
@@ -129,7 +122,6 @@
       }
     }
     
-    // Auto-sync time upon connection.
     function autoSyncTime() {
       let now = new Date();
       let hh = ("0" + now.getHours()).slice(-2);
@@ -138,7 +130,6 @@
       sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
     }
     
-    // Regular polling of TX characteristic every second.
     async function updateValues() {
       if (isHistoryMode) return;
       if (isReading) return;
@@ -147,7 +138,6 @@
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
         logFeedback("Polled value: " + receivedText);
-        // If the received text is history data, skip updating sensor fields.
         if (receivedText.startsWith("History:")) {
           isReading = false;
           return;
@@ -171,10 +161,8 @@
       isReading = false;
     }
     
-    // Parse history string and update charts.
     function updateHistoryCharts(historyStr) {
-      // Expected format (each line):
-      // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
+      // Expected format: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°" per line.
       const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && !line.startsWith("History:"));
       const labels = [];
       const avgData = [];
@@ -209,7 +197,6 @@
       directionChart.update();
     }
     
-    // When history is requested, suspend regular polling, then update charts.
     async function updateHistoryData() {
       try {
         const value = await txChar.readValue();
@@ -225,7 +212,6 @@
       }
     }
     
-    // BLE connection handling.
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
@@ -289,10 +275,9 @@
       }
     });
     getHistoryButton.addEventListener("click", () => {
-      // Enter history mode: suspend normal polling.
       isHistoryMode = true;
       sendCommand("H");
-      setTimeout(updateHistoryData, 3000); // wait 3 sec before fetching history data
+      setTimeout(updateHistoryData, 3000);
     });
   </script>
 </body>
