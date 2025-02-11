@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V3</title>
+  <title>TILT WIND BLE MONITOR V4</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -32,13 +32,13 @@
       padding: 10px;
       height: 150px;
       overflow-y: auto;
-      background: #f9f9f9;
       white-space: pre-wrap;
+      background: #f9f9f9;
     }
   </style>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V3</h1>
+  <h1>TILT WIND BLE MONITOR V4</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -55,7 +55,6 @@
     <button id="calibrateSouthButton">Calibrate South</button>
     <button id="calibrateEastButton">Calibrate East</button>
     <button id="calibrateWestButton">Calibrate West</button>
-    <!-- For calibration, no confirm button is needed because the firmware handles a 10-second routine -->
     <button id="startButton">Start Printing</button>
     <button id="stopButton">Stop Printing</button>
   </div>
@@ -63,12 +62,11 @@
   <div id="feedback">Feedback:</div>
   
   <script>
-    // Element references
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
     const feedbackDiv = document.getElementById("feedback");
-
+    
     const windDirectionField = document.getElementById("windDirection");
     const windSpeedField = document.getElementById("windSpeed");
     const gustSpeedField = document.getElementById("gustSpeed");
@@ -81,14 +79,13 @@
     const startButton = document.getElementById("startButton");
     const stopButton = document.getElementById("stopButton");
     
-    // UUIDs matching your firmware:
+    // UUIDs must match firmware
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
     
-    // Connect button handler
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
@@ -113,7 +110,6 @@
       }
     });
     
-    // Disconnect handler
     disconnectButton.addEventListener("click", () => {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
@@ -124,7 +120,7 @@
       }
     });
     
-    // Command button handlers – send commands via the RX characteristic
+    // Command button handlers
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => sendCommand("C N"));
     calibrateSouthButton.addEventListener("click", () => sendCommand("C S"));
@@ -147,35 +143,30 @@
     }
     
     function handleNotifications(event) {
-      let value = event.target.value;
-      let receivedText = new TextDecoder().decode(value);
+      const value = event.target.value;
+      const receivedText = new TextDecoder().decode(value);
       logFeedback("Device: " + receivedText);
       
-      // Update the displayed sensor values if the notification follows the expected format.
-      // Expected format: "X:xx.xx Y:yy.yy WS:zz.zz km/h, Dir:aa.aa (Cardinal)"
-      if (receivedText.indexOf("No Wind Detected") >= 0) {
-        windSpeedField.textContent = "0.00";
-        windDirectionField.textContent = "N/A";
-        gustSpeedField.textContent = "N/A";
-      } else {
-        // Try to extract WS and Dir values using a regex.
-        let regex = /WS:([0-9.]+) km\/h,\s*Dir:([0-9.]+)\s*\(([^)]+)\)/;
+      // If the notification is a sensor update (starts with "WS:" or equals "No Wind Detected"),
+      // update the data fields.
+      if (receivedText.startsWith("WS:")) {
+        let regex = /^WS:([0-9.]+) km\/h,\s*Dir:([0-9.]+) \(([^)]+)\)$/;
         let matches = receivedText.match(regex);
         if (matches) {
           windSpeedField.textContent = matches[1];
           windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
           gustSpeedField.textContent = "N/A";
-        } else {
-          // If not in expected format, display the raw text in Wind Speed field.
-          windSpeedField.textContent = receivedText;
-          windDirectionField.textContent = "N/A";
-          gustSpeedField.textContent = "N/A";
         }
+      } else if (receivedText === "No Wind Detected") {
+        windSpeedField.textContent = "0.00";
+        windDirectionField.textContent = "N/A";
+        gustSpeedField.textContent = "N/A";
       }
+      // Otherwise, it's calibration or command feedback – do not update sensor fields.
     }
     
     function logFeedback(message) {
-      let timestamp = new Date().toLocaleTimeString();
+      const timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
       feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
     }
