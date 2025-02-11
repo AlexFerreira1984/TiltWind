@@ -3,42 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V6</title>
+  <title>TILT WIND BLE MONITOR V7 – POLLING</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-    h1 {
-      text-align: center;
-      color: #333;
-    }
-    #status {
-      font-size: 18px;
-      margin-top: 10px;
-      color: #007BFF;
-    }
-    .data, .actions, #feedback {
-      margin-top: 20px;
-      font-size: 16px;
-    }
-    button {
-      margin: 5px;
-      padding: 10px 20px;
-      font-size: 16px;
-    }
-    #feedback {
-      border: 1px solid #ccc;
-      padding: 10px;
-      height: 150px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      background: #f9f9f9;
-    }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { text-align: center; }
+    #status { font-size: 18px; color: #007BFF; }
+    .data, .actions, #feedback { margin-top: 20px; font-size: 16px; }
+    button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+    #feedback { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; background: #f9f9f9; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V6</h1>
+  <h1>TILT WIND BLE MONITOR V7 – POLLING</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -62,18 +38,15 @@
   <div id="feedback">Feedback:</div>
   
   <script>
-    // Element references
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
     const feedbackDiv = document.getElementById("feedback");
-
-    // Data display fields
+    
     const windDirectionField = document.getElementById("windDirection");
     const windSpeedField = document.getElementById("windSpeed");
     const gustSpeedField = document.getElementById("gustSpeed");
     
-    // Command buttons
     const tareButton = document.getElementById("tareButton");
     const calibrateNorthButton = document.getElementById("calibrateNorthButton");
     const calibrateSouthButton = document.getElementById("calibrateSouthButton");
@@ -82,14 +55,13 @@
     const startButton = document.getElementById("startButton");
     const stopButton = document.getElementById("stopButton");
     
-    // UUIDs (must match firmware V6)
+    // UUIDs must match firmware V7 – POLLING
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
     
-    // Connect to device
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
@@ -101,12 +73,13 @@
         windService = await server.getPrimaryService(WIND_SERVICE_UUID);
         txChar = await windService.getCharacteristic(TX_CHAR_UUID);
         rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
-        await txChar.startNotifications();
-        txChar.addEventListener('characteristicvaluechanged', handleNotifications);
         statusDiv.textContent = "Status: Connected";
         connectButton.disabled = true;
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
+        
+        // Start polling the TX characteristic once per second.
+        setInterval(updateValues, 1000);
       } catch (error) {
         console.error("Connection Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
@@ -114,7 +87,6 @@
       }
     });
     
-    // Disconnect
     disconnectButton.addEventListener("click", () => {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
@@ -125,7 +97,6 @@
       }
     });
     
-    // Command button handlers – send commands via RX characteristic
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => sendCommand("C N"));
     calibrateSouthButton.addEventListener("click", () => sendCommand("C S"));
@@ -147,28 +118,31 @@
       }
     }
     
-    function handleNotifications(event) {
-      const value = event.target.value;
-      const receivedText = new TextDecoder().decode(value);
-      logFeedback("Device: " + receivedText);
-      
-      // Check if the notification is a sensor update:
-      // Expected formats:
-      // "NO_WIND" or "WS:xx.xx,DIR:yy.yy,CARD:ZZZ"
-      if (receivedText === "NO_WIND") {
-        windSpeedField.textContent = "0.00";
-        windDirectionField.textContent = "N/A";
-        gustSpeedField.textContent = "N/A";
-      } else if (receivedText.startsWith("WS:")) {
-        let regex = /^WS:([0-9.]+),DIR:([0-9.]+),CARD:([A-Z]+)$/;
-        let matches = receivedText.match(regex);
-        if (matches) {
-          windSpeedField.textContent = matches[1];
-          windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
+    async function updateValues() {
+      try {
+        // Poll the TX characteristic for the latest sensor data.
+        const value = await txChar.readValue();
+        const receivedText = new TextDecoder().decode(value.buffer);
+        logFeedback("Polled value: " + receivedText);
+        
+        // Parse the received text
+        if (receivedText === "NO_WIND" || receivedText === "NO_WIND") {
+          windSpeedField.textContent = "0.00";
+          windDirectionField.textContent = "N/A";
           gustSpeedField.textContent = "N/A";
+        } else if (receivedText.startsWith("WS:")) {
+          // Expected format: WS:xx.xx,DIR:yy.yy,CARD:ZZZ
+          let regex = /^WS:([0-9.]+),DIR:([0-9.]+),CARD:([A-Z]+)$/;
+          let matches = receivedText.match(regex);
+          if (matches) {
+            windSpeedField.textContent = matches[1];
+            windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
+            gustSpeedField.textContent = "N/A";
+          }
         }
+      } catch (error) {
+        logFeedback("Update Error: " + error);
       }
-      // Other notifications (e.g. calibration feedback) are only logged.
     }
     
     function logFeedback(message) {
