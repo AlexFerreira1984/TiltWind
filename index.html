@@ -49,7 +49,7 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
-  <!-- Three separate charts for history logs -->
+  <!-- Graphs for history logs -->
   <div class="chart-container">
     <canvas id="avgSpeedChart"></canvas>
   </div>
@@ -63,7 +63,6 @@
   <div id="feedback">Feedback:</div>
   
   <script>
-    // Element references
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -85,14 +84,14 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // UUIDs (must match firmware V10/V11)
+    // UUIDs (must match firmware V11)
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     
     let device, server, windService, txChar, rxChar;
     
-    // Create three Chart.js charts.
+    // Create Chart.js graphs.
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
@@ -109,7 +108,7 @@
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Automatically send OS time upon connection.
+    // Automatically sync time upon connection using OS time.
     function autoSyncTime() {
       let now = new Date();
       let hh = ("0" + now.getHours()).slice(-2);
@@ -119,14 +118,20 @@
       sendCommand("TIME:" + timeStr);
     }
     
-    // Polling function to update sensor data.
+    // Poll TX characteristic every second.
     async function updateValues() {
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
         logFeedback("Polled value: " + receivedText);
         
-        // Update sensor fields based on expected format:
+        // If the received text is history (starts with "History:"), do nothing here.
+        if (receivedText.startsWith("History:")) {
+          // History will be handled via getHistory button.
+          return;
+        }
+        
+        // Otherwise, assume sensor update.
         if (receivedText === "NO_WIND") {
           windSpeedField.textContent = "0.00";
           windDirectionField.textContent = "N/A";
@@ -162,9 +167,9 @@
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
         
-        // Automatically sync time after connection.
+        // Auto-sync time immediately.
         autoSyncTime();
-        // Start polling sensor data once per second.
+        // Start polling TX characteristic every second.
         setInterval(updateValues, 1000);
       } catch (error) {
         console.error("Connection Error:", error);
@@ -233,17 +238,35 @@
     }
     
     // ---------------------
-    // Graphing History Data
+    // Graphing History Data with Chart.js
     // ---------------------
-    // Expected history record format (each line):
-    // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
+    const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Avg Speed (km/h)' }}}}
+    });
+    const maxSpeedChart = new Chart(document.getElementById("maxSpeedChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Max Speed (km/h)', data: [], borderColor: 'red', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Max Speed (km/h)' }}}}
+    });
+    const directionChart = new Chart(document.getElementById("directionChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Direction (°)', data: [], borderColor: 'green', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
+    });
+    
+    // Parse history string and update the charts.
     function updateHistoryCharts(historyStr) {
+      // Expected history record format (each line):
+      // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
       const lines = historyStr.split("\n").filter(line => line.trim().length > 0);
       const labels = [];
       const avgData = [];
       const maxData = [];
       const dirData = [];
       lines.forEach(line => {
+        if (line.startsWith("History:")) return; // Skip header line if present.
         const parts = line.split(" - ");
         if (parts.length >= 2) {
           const timePart = parts[0].trim();
@@ -273,8 +296,8 @@
       directionChart.update();
     }
     
-    // When history data is received (via "H" command), update graphs.
-    async function updateHistory() {
+    // When history is received (via the "H" command), update the charts.
+    async function updateHistoryData() {
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
@@ -286,6 +309,9 @@
         logFeedback("History update error: " + error);
       }
     }
+    
+    // Optionally, poll history data periodically (if desired) or let the user click "Get History".
+    
   </script>
 </body>
 </html>
