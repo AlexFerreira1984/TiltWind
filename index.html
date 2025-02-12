@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V14 Chunky</h1>
+  <h1>TILT WIND BLE MONITOR V13 Pully</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -66,9 +66,11 @@
     const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
     let device, server, windService, txChar, rxChar, historyChar;
-    let historyBuffer = "";
     
-    // DOM elements.
+    // Global variables for live sensor data polling (TX) and for history polling.
+    let historyBuffer = "";
+    let pollingHistory = false;
+    
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -76,6 +78,7 @@
     const windDirectionField = document.getElementById("windDirection");
     const windSpeedField = document.getElementById("windSpeed");
     const gustSpeedField = document.getElementById("gustSpeed");
+    
     const tareButton = document.getElementById("tareButton");
     const calibrateNorthButton = document.getElementById("calibrateNorthButton");
     const calibrateSouthButton = document.getElementById("calibrateSouthButton");
@@ -88,68 +91,29 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // Initialize Chart.js graphs (using previous working initialization).
+    // Chart initialization (same as previous working code).
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Avg Speed (km/h)',
-          data: [],
-          borderColor: 'blue',
-          fill: false
-        }]
-      },
-      options: {
-        scales: {
-          x: { title: { display: true, text: 'Time' } },
-          y: { title: { display: true, text: 'Avg Speed (km/h)' } }
-        }
-      }
+      data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Avg Speed (km/h)' }}}}
     });
     const maxSpeedChart = new Chart(document.getElementById("maxSpeedChart").getContext("2d"), {
       type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Max Speed (km/h)',
-          data: [],
-          borderColor: 'red',
-          fill: false
-        }]
-      },
-      options: {
-        scales: {
-          x: { title: { display: true, text: 'Time' } },
-          y: { title: { display: true, text: 'Max Speed (km/h)' } }
-        }
-      }
+      data: { labels: [], datasets: [{ label: 'Max Speed (km/h)', data: [], borderColor: 'red', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Max Speed (km/h)' }}}}
     });
     const directionChart = new Chart(document.getElementById("directionChart").getContext("2d"), {
       type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Direction (°)',
-          data: [],
-          borderColor: 'green',
-          fill: false
-        }]
-      },
-      options: {
-        scales: {
-          x: { title: { display: true, text: 'Time' } },
-          y: { title: { display: true, text: 'Direction (°)' } }
-        }
-      }
+      data: { labels: [], datasets: [{ label: 'Direction (°)', data: [], borderColor: 'green', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
     // Logging helper.
-    function logFeedback(msg) {
+    function logFeedback(message) {
       const ts = new Date().toLocaleTimeString();
-      feedbackDiv.textContent += `[${ts}] ${msg}\n`;
+      feedbackDiv.textContent += `[${ts}] ${message}\n`;
       feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
-      console.log(msg);
+      console.log(message);
     }
     
     // Send a command via the RX characteristic.
@@ -175,7 +139,7 @@
       sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
     }
     
-    // Poll TX characteristic every 10 seconds for live sensor data.
+    // Poll the TX characteristic for live sensor data every 10 seconds.
     async function updateValues() {
       try {
         const value = await txChar.readValue();
@@ -199,93 +163,34 @@
       }
     }
     
-    // Parse the complete history string and update charts.
-    function updateHistoryCharts(historyStr) {
-      const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && /^[0-9]/.test(line));
-      const labels = [];
-      const avgData = [];
-      const maxData = [];
-      const dirData = [];
-      lines.forEach(line => {
-        const parts = line.split(" - ");
-        if (parts.length >= 2) {
-          const timePart = parts[0].trim();
-          const dataPart = parts[1].trim();
-          const avgMatch = dataPart.match(/Avg:([0-9.]+)/);
-          const maxMatch = dataPart.match(/Max:([0-9.]+)/);
-          const dirMatch = dataPart.match(/Dir:([0-9.]+)/);
-          if (avgMatch && maxMatch && dirMatch) {
-            labels.push(timePart);
-            avgData.push(parseFloat(avgMatch[1]));
-            maxData.push(parseFloat(maxMatch[1]));
-            dirData.push(parseFloat(dirMatch[1]));
-          }
-        }
-      });
-      avgSpeedChart.data.labels = labels;
-      avgSpeedChart.data.datasets[0].data = avgData;
-      avgSpeedChart.update();
-      
-      maxSpeedChart.data.labels = labels;
-      maxSpeedChart.data.datasets[0].data = maxData;
-      maxSpeedChart.update();
-      
-      directionChart.data.labels = labels;
-      directionChart.data.datasets[0].data = dirData;
-      directionChart.update();
-    }
-    
-    // Set up history notifications.
-    async function setupHistoryNotifications() {
-      try {
-        await historyChar.startNotifications();
-        logFeedback("History notifications started.");
-        historyChar.addEventListener('characteristicvaluechanged', event => {
-          const chunk = new TextDecoder().decode(event.target.value);
-          logFeedback("History chunk received: " + chunk);
+    // Poll the history characteristic for one chunk at a time.
+    function pollHistoryChunk() {
+      historyChar.readValue().then(value => {
+        let chunk = new TextDecoder().decode(value.buffer);
+        logFeedback("Polled history chunk: " + chunk);
+        if (chunk.indexOf("<END>") !== -1) {
+          historyBuffer += chunk.replace("<END>", "");
+          logFeedback("Full history received via polling:\n" + historyBuffer);
+          updateHistoryCharts(historyBuffer);
+          pollingHistory = false;
+        } else {
           historyBuffer += chunk;
-          // Check if the end marker is present.
-          if (historyBuffer.indexOf("<END>") !== -1) {
-            historyBuffer = historyBuffer.replace("<END>", "");
-            logFeedback("Full history received:\n" + historyBuffer);
-            updateHistoryCharts(historyBuffer);
-            historyBuffer = "";
-          }
-        });
-      } catch (error) {
-        logFeedback("History notification setup error: " + error);
-      }
+          // Request next chunk by sending "N"
+          sendCommand("N");
+          setTimeout(pollHistoryChunk, 1000);  // Poll again after 1 second
+        }
+      }).catch(error => {
+        logFeedback("History polling error: " + error);
+        pollingHistory = false;
+      });
     }
     
-    // "Get History" button handler.
+    // "Get History" button handler: initiate polling for history chunks.
     getHistoryButton.addEventListener("click", () => {
       historyBuffer = "";
-      sendCommand("H");
-      // Fallback: after 10 seconds, if historyBuffer is non-empty, process it.
-      setTimeout(async () => {
-        try {
-          const value = await historyChar.readValue();
-          const data = new TextDecoder().decode(value.buffer);
-          // If fallback read yields non-empty data or if our accumulated buffer is non-empty:
-          let fullHistory = "";
-          if (historyBuffer.trim() !== "") {
-            fullHistory = historyBuffer;
-          } else if (data.trim() !== "") {
-            fullHistory = data;
-          }
-          if (fullHistory !== "") {
-            // Remove the <END> marker if present.
-            fullHistory = fullHistory.replace("<END>", "");
-            logFeedback("Fallback read processed history:\n" + fullHistory);
-            updateHistoryCharts(fullHistory);
-            historyBuffer = "";
-          } else {
-            logFeedback("Fallback read: No history data received.");
-          }
-        } catch (err) {
-          logFeedback("Fallback read error: " + err);
-        }
-      }, 10000);
+      pollingHistory = true;
+      sendCommand("H");  // Request first chunk
+      setTimeout(pollHistoryChunk, 1000);
     });
     
     // Connect button handler.
@@ -301,13 +206,12 @@
         txChar = await windService.getCharacteristic(TX_CHAR_UUID);
         rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
         historyChar = await windService.getCharacteristic(HISTORY_CHAR_UUID);
-        await setupHistoryNotifications();
         statusDiv.textContent = "Status: Connected";
         connectButton.disabled = true;
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
         autoSyncTime();
-        setInterval(updateValues, 10000);
+        setInterval(updateValues, 10000);  // Poll TX value every 10 seconds
       } catch (error) {
         console.error("Connection Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
@@ -315,7 +219,6 @@
       }
     });
     
-    // Disconnect button handler.
     disconnectButton.addEventListener("click", () => {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
@@ -342,6 +245,12 @@
         logFeedback("Invalid time format. Use HH:MM:SS");
       }
     });
+    
+    // Dummy updateHistoryCharts function – replace with your chart update code.
+    function updateHistoryCharts(historyStr) {
+      logFeedback("Updating charts with history:\n" + historyStr);
+      // Here you would parse the history string and update your Chart.js charts.
+    }
   </script>
 </body>
 </html>
