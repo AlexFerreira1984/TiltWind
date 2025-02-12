@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V12 – Layout Tweak</title>
+  <title>TILT WIND BLE MONITOR V12 Alternative</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V11 Revised – Layout Tweak</h1>
+  <h1>TILT WIND BLE MONITOR V12 Alternative</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -44,7 +44,7 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
-  <!-- Feedback text box placed here (after actions, before graphs) -->
+  <!-- Feedback is placed here -->
   <div id="feedback">Feedback:</div>
   
   <!-- Graphs for history logs -->
@@ -59,13 +59,17 @@
   </div>
   
   <script>
+    // UUIDs must match firmware:
+    // Wind Service: "12345678-1234-1234-1234-1234567890ab"
+    // TX Characteristic (sensor updates): "12345678-1234-1234-1234-1234567890ac"
+    // RX Characteristic (commands): "12345678-1234-1234-1234-1234567890ad"
+    // History Characteristic: "12345678-1234-1234-1234-1234567890ae"
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
+    const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
-    let device, server, windService, txChar, rxChar;
-    let isReading = false;
-    let isHistoryMode = false;
+    let device, server, windService, txChar, rxChar, historyChar;
     
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
@@ -88,6 +92,7 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
+    // Create Chart.js graphs.
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
@@ -131,18 +136,12 @@
       sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
     }
     
+    // Poll sensor data from TX characteristic every 10 seconds.
     async function updateValues() {
-      if (isHistoryMode) return;
-      if (isReading) return;
-      isReading = true;
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
         logFeedback("Polled value: " + receivedText);
-        if (receivedText.startsWith("History:")) {
-          isReading = false;
-          return;
-        }
         if (receivedText === "NO_WIND") {
           windSpeedField.textContent = "0.00";
           windDirectionField.textContent = "N/A";
@@ -159,12 +158,12 @@
       } catch (error) {
         logFeedback("Update Error: " + error);
       }
-      isReading = false;
     }
     
+    // Parse history records and update charts.
     function updateHistoryCharts(historyStr) {
-      // Expected history record format per line: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
-      const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && !line.startsWith("History:"));
+      // Expected record format: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
+      const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && /^[0-9]/.test(line));
       const labels = [];
       const avgData = [];
       const maxData = [];
@@ -198,18 +197,15 @@
       directionChart.update();
     }
     
-    async function updateHistoryData() {
+    // When the user clicks "Get History", read the full history from historyChar.
+    async function getHistory() {
       try {
-        const value = await txChar.readValue();
-        const receivedText = new TextDecoder().decode(value.buffer);
-        if (receivedText.startsWith("History:")) {
-          logFeedback("History received:\n" + receivedText);
-          updateHistoryCharts(receivedText);
-        }
+        const value = await historyChar.readValue();
+        const historyStr = new TextDecoder().decode(value.buffer);
+        logFeedback("History received:\n" + historyStr);
+        updateHistoryCharts(historyStr);
       } catch (error) {
-        logFeedback("History update error: " + error);
-      } finally {
-        isHistoryMode = false;
+        logFeedback("Get History error: " + error);
       }
     }
     
@@ -224,12 +220,13 @@
         windService = await server.getPrimaryService(WIND_SERVICE_UUID);
         txChar = await windService.getCharacteristic(TX_CHAR_UUID);
         rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
+        historyChar = await windService.getCharacteristic(HISTORY_CHAR_UUID);
         statusDiv.textContent = "Status: Connected";
         connectButton.disabled = true;
         disconnectButton.disabled = false;
         logFeedback("Connected to TiltWind!");
         autoSyncTime();
-        setInterval(updateValues, 10000);
+        setInterval(updateValues, 10000); // Poll sensor data every 10 seconds
       } catch (error) {
         console.error("Connection Error:", error);
         statusDiv.textContent = "Status: Error - " + error.message;
@@ -275,9 +272,9 @@
       }
     });
     getHistoryButton.addEventListener("click", () => {
-      isHistoryMode = true;
       sendCommand("H");
-      setTimeout(updateHistoryData, 3000);
+      // Allow some time (3 sec) for the firmware to update historyChar, then read it.
+      setTimeout(getHistory, 3000);
     });
   </script>
 </body>
