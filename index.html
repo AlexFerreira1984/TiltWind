@@ -44,7 +44,7 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
-  <!-- Feedback is placed here -->
+  <!-- Feedback area -->
   <div id="feedback">Feedback:</div>
   
   <!-- Graphs for history logs -->
@@ -66,7 +66,7 @@
     const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
     let device, server, windService, txChar, rxChar, historyChar;
-    // Global buffer for accumulating history chunks.
+    // Global buffer to accumulate history notifications.
     let historyBuffer = "";
     
     const connectButton = document.getElementById("connectButton");
@@ -107,7 +107,7 @@
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Logging helper
+    // Logging helper.
     function logFeedback(message) {
       const timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
@@ -115,7 +115,7 @@
       console.log(message);
     }
     
-    // Sends command over RX characteristic.
+    // Send command via the RX characteristic.
     async function sendCommand(command) {
       if (!rxChar) {
         logFeedback("RX characteristic not found!");
@@ -129,7 +129,7 @@
       }
     }
     
-    // Auto sync time with device.
+    // Auto-sync time with the device.
     function autoSyncTime() {
       let now = new Date();
       let hh = ("0" + now.getHours()).slice(-2);
@@ -206,8 +206,9 @@
         historyChar.addEventListener('characteristicvaluechanged', event => {
           const chunk = new TextDecoder().decode(event.target.value);
           logFeedback("History chunk received: " + chunk);
-          historyBuffer += chunk; // Append each chunk
-          // Check if we have reached the end marker.
+          // Append each chunk to the global buffer.
+          historyBuffer += chunk;
+          // When the end marker is detected, process the full history.
           if (historyBuffer.indexOf("<END>") !== -1) {
             historyBuffer = historyBuffer.replace("<END>", "");
             logFeedback("Full history received:\n" + historyBuffer);
@@ -220,11 +221,11 @@
       }
     }
     
-    // When "Get History" is clicked, reset the buffer and send the history request.
+    // When "Get History" is clicked, clear the history buffer and send the history request.
     getHistoryButton.addEventListener("click", () => {
       historyBuffer = "";
       sendCommand("H");
-      // Fallback: use readValue after 5 seconds if notifications are delayed.
+      // Use a fallback read after 10 seconds if notifications are delayed.
       setTimeout(async () => {
         try {
           const value = await historyChar.readValue();
@@ -236,7 +237,7 @@
         } catch (err) {
           logFeedback("Fallback read error: " + err);
         }
-      }, 5000);
+      }, 10000);
     });
     
     // Connect to the BLE device.
@@ -277,7 +278,7 @@
       }
     });
     
-    // Button event listeners for commands.
+    // Button event listeners for other commands.
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => {
       const calSpeed = calSpeedInput.value;
