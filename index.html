@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V13 Chunky</h1>
+  <h1>TILT WIND BLE MONITOR V14 Chunky</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -59,14 +59,14 @@
   </div>
   
   <script>
-    // BLE UUIDs – must match the firmware.
+    // BLE UUIDs – these must match your firmware.
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
     const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
     let device, server, windService, txChar, rxChar, historyChar;
-    // Global buffer to accumulate history notifications.
+    // Global buffer for accumulating history notifications.
     let historyBuffer = "";
     
     const connectButton = document.getElementById("connectButton");
@@ -107,7 +107,7 @@
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
     
-    // Logging helper.
+    // Helper for logging.
     function logFeedback(message) {
       const timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
@@ -115,7 +115,7 @@
       console.log(message);
     }
     
-    // Send command via the RX characteristic.
+    // Send a command via the RX characteristic.
     async function sendCommand(command) {
       if (!rxChar) {
         logFeedback("RX characteristic not found!");
@@ -129,7 +129,7 @@
       }
     }
     
-    // Auto-sync time with the device.
+    // Auto-sync the device's time.
     function autoSyncTime() {
       let now = new Date();
       let hh = ("0" + now.getHours()).slice(-2);
@@ -138,7 +138,7 @@
       sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
     }
     
-    // Poll sensor data from the TX characteristic every 10 seconds.
+    // Poll the TX characteristic for sensor data every 10 seconds.
     async function updateValues() {
       try {
         const value = await txChar.readValue();
@@ -198,7 +198,7 @@
       directionChart.update();
     }
     
-    // Set up history notifications on the history characteristic.
+    // Subscribe to notifications on the history characteristic.
     async function setupHistoryNotifications() {
       try {
         await historyChar.startNotifications();
@@ -206,14 +206,14 @@
         historyChar.addEventListener('characteristicvaluechanged', event => {
           const chunk = new TextDecoder().decode(event.target.value);
           logFeedback("History chunk received: " + chunk);
-          // Append each chunk to the global buffer.
+          // Append each chunk to the historyBuffer.
           historyBuffer += chunk;
-          // When the end marker is detected, process the full history.
+          // Check for the end marker.
           if (historyBuffer.indexOf("<END>") !== -1) {
             historyBuffer = historyBuffer.replace("<END>", "");
             logFeedback("Full history received:\n" + historyBuffer);
             updateHistoryCharts(historyBuffer);
-            historyBuffer = ""; // Reset for the next transmission.
+            historyBuffer = ""; // Reset the buffer for next transmission.
           }
         });
       } catch (error) {
@@ -221,91 +221,9 @@
       }
     }
     
-    // When "Get History" is clicked, clear the history buffer and send the history request.
+    // When "Get History" is clicked, clear the buffer and send the history request.
     getHistoryButton.addEventListener("click", () => {
       historyBuffer = "";
       sendCommand("H");
-      // Use a fallback read after 10 seconds if notifications are delayed.
-      setTimeout(async () => {
-        try {
-          const value = await historyChar.readValue();
-          const data = new TextDecoder().decode(value.buffer);
-          if (data && data.indexOf("<END>") !== -1) {
-            logFeedback("Fallback read received full history:\n" + data.replace("<END>", ""));
-            updateHistoryCharts(data.replace("<END>", ""));
-          }
-        } catch (err) {
-          logFeedback("Fallback read error: " + err);
-        }
-      }, 10000);
-    });
-    
-    // Connect to the BLE device.
-    connectButton.addEventListener("click", async () => {
-      try {
-        statusDiv.textContent = "Status: Connecting...";
-        device = await navigator.bluetooth.requestDevice({
-          filters: [{ name: "TiltWind" }],
-          optionalServices: [WIND_SERVICE_UUID]
-        });
-        server = await device.gatt.connect();
-        windService = await server.getPrimaryService(WIND_SERVICE_UUID);
-        txChar = await windService.getCharacteristic(TX_CHAR_UUID);
-        rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
-        historyChar = await windService.getCharacteristic(HISTORY_CHAR_UUID);
-        await setupHistoryNotifications();
-        statusDiv.textContent = "Status: Connected";
-        connectButton.disabled = true;
-        disconnectButton.disabled = false;
-        logFeedback("Connected to TiltWind!");
-        autoSyncTime();
-        setInterval(updateValues, 10000); // Poll TX value every 10 seconds.
-      } catch (error) {
-        console.error("Connection Error:", error);
-        statusDiv.textContent = "Status: Error - " + error.message;
-        logFeedback("Error: " + error.message);
-      }
-    });
-    
-    // Disconnect from the BLE device.
-    disconnectButton.addEventListener("click", () => {
-      if (device && device.gatt.connected) {
-        device.gatt.disconnect();
-        statusDiv.textContent = "Status: Disconnected";
-        connectButton.disabled = false;
-        disconnectButton.disabled = true;
-        logFeedback("Disconnected.");
-      }
-    });
-    
-    // Button event listeners for other commands.
-    tareButton.addEventListener("click", () => sendCommand("T"));
-    calibrateNorthButton.addEventListener("click", () => {
-      const calSpeed = calSpeedInput.value;
-      sendCommand("C N:" + calSpeed);
-    });
-    calibrateSouthButton.addEventListener("click", () => {
-      const calSpeed = calSpeedInput.value;
-      sendCommand("C S:" + calSpeed);
-    });
-    calibrateEastButton.addEventListener("click", () => {
-      const calSpeed = calSpeedInput.value;
-      sendCommand("C E:" + calSpeed);
-    });
-    calibrateWestButton.addEventListener("click", () => {
-      const calSpeed = calSpeedInput.value;
-      sendCommand("C W:" + calSpeed);
-    });
-    startButton.addEventListener("click", () => sendCommand("S"));
-    stopButton.addEventListener("click", () => sendCommand("X"));
-    setTimeButton.addEventListener("click", () => {
-      const t = setTimeInput.value.trim();
-      if (t.length === 8) {
-        sendCommand("TIME:" + t);
-      } else {
-        logFeedback("Invalid time format. Use HH:MM:SS");
-      }
-    });
-  </script>
-</body>
-</html>
+      // Fallback: if notifications are delayed, perform a read after 10 seconds.
+ 
