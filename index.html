@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V13 Chunky</title>
+  <title>TILT WIND BLE MONITOR V12 Alternative</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
@@ -70,7 +70,6 @@
     const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
     let device, server, windService, txChar, rxChar, historyChar;
-    
     // Global buffer for accumulating history chunks.
     let historyBuffer = "";
     
@@ -116,6 +115,7 @@
       const timestamp = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
       feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
+      console.log(message);
     }
     
     async function sendCommand(command) {
@@ -144,7 +144,7 @@
       try {
         const value = await txChar.readValue();
         const receivedText = new TextDecoder().decode(value.buffer);
-        logFeedback("Polled value: " + receivedText);
+        logFeedback("Polled TX value: " + receivedText);
         if (receivedText === "NO_WIND") {
           windSpeedField.textContent = "0.00";
           windDirectionField.textContent = "N/A";
@@ -208,14 +208,15 @@
         historyChar.addEventListener('characteristicvaluechanged', event => {
           const chunk = new TextDecoder().decode(event.target.value);
           logFeedback("History chunk received: " + chunk);
-          // Check if this chunk contains the end marker.
-          if (chunk.indexOf("<END>") !== -1) {
-            historyBuffer += chunk.replace("<END>", "");
+          // Append received chunk to the buffer.
+          historyBuffer += chunk;
+          // Check if this chunk (or accumulated buffer) contains the end marker.
+          if (historyBuffer.indexOf("<END>") !== -1) {
+            // Remove the end marker.
+            historyBuffer = historyBuffer.replace("<END>", "");
             logFeedback("Full history received:\n" + historyBuffer);
             updateHistoryCharts(historyBuffer);
             historyBuffer = ""; // Reset for next use.
-          } else {
-            historyBuffer += chunk;
           }
         });
       } catch (error) {
@@ -223,10 +224,23 @@
       }
     }
     
-    // When the user clicks "Get History", clear the history buffer and send the command.
+    // When the user clicks "Get History", reset the history buffer and send the command.
     getHistoryButton.addEventListener("click", () => {
-      historyBuffer = ""; // Reset the accumulated buffer.
+      historyBuffer = ""; // Clear any previous data.
       sendCommand("H");
+      // Optionally, use a fallback readValue after a delay if notifications are not received.
+      setTimeout(async () => {
+        try {
+          const value = await historyChar.readValue();
+          const data = new TextDecoder().decode(value.buffer);
+          if (data && data.indexOf("<END>") !== -1) {
+            logFeedback("Fallback read received full history:\n" + data.replace("<END>", ""));
+            updateHistoryCharts(data.replace("<END>", ""));
+          }
+        } catch (err) {
+          logFeedback("Fallback read error: " + err);
+        }
+      }, 5000);
     });
     
     connectButton.addEventListener("click", async () => {
