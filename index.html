@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND BLE MONITOR V12 Alternative</title>
+  <title>TILT WIND BLE MONITOR V13 Chunky</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
@@ -70,6 +70,9 @@
     const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
     let device, server, windService, txChar, rxChar, historyChar;
+    
+    // Global buffer for accumulating history chunks.
+    let historyBuffer = "";
     
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
@@ -197,17 +200,34 @@
       directionChart.update();
     }
     
-    // When the user clicks "Get History", read the full history from historyChar.
-    async function getHistory() {
+    // Set up history notifications.
+    async function setupHistoryNotifications() {
       try {
-        const value = await historyChar.readValue();
-        const historyStr = new TextDecoder().decode(value.buffer);
-        logFeedback("History received:\n" + historyStr);
-        updateHistoryCharts(historyStr);
+        await historyChar.startNotifications();
+        logFeedback("History notifications started.");
+        historyChar.addEventListener('characteristicvaluechanged', event => {
+          const chunk = new TextDecoder().decode(event.target.value);
+          logFeedback("History chunk received: " + chunk);
+          // Check if this chunk contains the end marker.
+          if (chunk.indexOf("<END>") !== -1) {
+            historyBuffer += chunk.replace("<END>", "");
+            logFeedback("Full history received:\n" + historyBuffer);
+            updateHistoryCharts(historyBuffer);
+            historyBuffer = ""; // Reset for next use.
+          } else {
+            historyBuffer += chunk;
+          }
+        });
       } catch (error) {
-        logFeedback("Get History error: " + error);
+        logFeedback("History notification setup error: " + error);
       }
     }
+    
+    // When the user clicks "Get History", clear the history buffer and send the command.
+    getHistoryButton.addEventListener("click", () => {
+      historyBuffer = ""; // Reset the accumulated buffer.
+      sendCommand("H");
+    });
     
     connectButton.addEventListener("click", async () => {
       try {
@@ -221,6 +241,7 @@
         txChar = await windService.getCharacteristic(TX_CHAR_UUID);
         rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
         historyChar = await windService.getCharacteristic(HISTORY_CHAR_UUID);
+        await setupHistoryNotifications();
         statusDiv.textContent = "Status: Connected";
         connectButton.disabled = true;
         disconnectButton.disabled = false;
@@ -270,11 +291,6 @@
       } else {
         logFeedback("Invalid time format. Use HH:MM:SS");
       }
-    });
-    getHistoryButton.addEventListener("click", () => {
-      sendCommand("H");
-      // Allow some time (3 sec) for the firmware to update historyChar, then read it.
-      setTimeout(getHistory, 3000);
     });
   </script>
 </body>
