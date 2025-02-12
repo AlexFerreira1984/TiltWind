@@ -1,77 +1,281 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>TiltWind BLE Monitor v12</title>
-    <script>
-        let device, server, txChar, rxChar;
-        let historyData = "";
-
-        async function connectToTiltWind() {
-            try {
-                device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: false,
-                    filters: [{ name: "TiltWind" }],
-                    optionalServices: ["12345678-1234-1234-1234-1234567890ab"]
-                });
-
-                server = await device.gatt.connect();
-                const service = await server.getPrimaryService("12345678-1234-1234-1234-1234567890ab");
-
-                txChar = await service.getCharacteristic("12345678-1234-1234-1234-1234567890ac");
-                rxChar = await service.getCharacteristic("12345678-1234-1234-1234-1234567890ad");
-
-                txChar.startNotifications();
-                txChar.addEventListener("characteristicvaluechanged", handleNotification);
-
-                document.getElementById("status").innerText = "Connected!";
-            } catch (error) {
-                console.error("BLE Error:", error);
-            }
-        }
-
-        function handleNotification(event) {
-            let value = new TextDecoder().decode(event.target.value);
-            console.log("Received:", value);
-
-            if (value.startsWith("HISTORY:")) {
-                historyData += value.replace("HISTORY:", "").trim() + "\n";
-            } else if (value === "MORE") {
-                sendCommand("H");
-            } else if (value === "END") {
-                document.getElementById("historyBox").innerText = historyData;
-                historyData = "";
-            } else {
-                document.getElementById("windData").innerText = value;
-            }
-        }
-
-        async function sendCommand(cmd) {
-            if (rxChar) {
-                await rxChar.writeValue(new TextEncoder().encode(cmd));
-                console.log("Sent command:", cmd);
-            }
-        }
-
-        function requestHistory() {
-            historyData = "";
-            sendCommand("H");
-        }
-    </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TILT WIND BLE MONITOR V12 Alternative</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { text-align: center; color: #333; }
+    #status { font-size: 18px; color: #007BFF; margin-bottom: 10px; }
+    .data, .actions, #feedback { margin-top: 20px; font-size: 16px; }
+    button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+    input { padding: 5px; font-size: 16px; width: 100px; }
+    #feedback { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; background: #f9f9f9; white-space: pre-wrap; }
+    .chart-container { width: 400px; height: 200px; margin-top: 20px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <h1>TiltWind BLE Monitor v12</h1>
-
-    <button onclick="connectToTiltWind()">Connect</button>
-    <button onclick="requestHistory()">Request History</button>
-
-    <div id="status">Disconnected</div>
+  <h1>TILT WIND BLE MONITOR V12 Alternative</h1>
+  <button id="connectButton">Connect</button>
+  <button id="disconnectButton" disabled>Disconnect</button>
+  <div id="status">Status: Disconnected</div>
+  
+  <div class="data">
+    <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span></p>
+    <p><strong>Wind Speed:</strong> <span id="windSpeed">N/A</span> km/h</p>
+    <p><strong>Gust Speed:</strong> <span id="gustSpeed">N/A</span> km/h</p>
+  </div>
+  
+  <div class="actions">
+    <button id="tareButton">Tare</button><br>
+    <label for="calSpeed">Calib Wind Speed (m/s):</label>
+    <input type="number" id="calSpeed" step="0.1" value="2.5"><br>
+    <button id="calibrateNorthButton">Calibrate North</button>
+    <button id="calibrateSouthButton">Calibrate South</button>
+    <button id="calibrateEastButton">Calibrate East</button>
+    <button id="calibrateWestButton">Calibrate West</button><br>
+    <button id="startButton">Start Printing</button>
+    <button id="stopButton">Stop Printing</button><br>
+    <label for="setTime">Time (HH:MM:SS):</label>
+    <input type="text" id="setTime" placeholder="HH:MM:SS">
+    <button id="setTimeButton">Set Time</button><br>
+    <button id="getHistoryButton">Get History</button>
+  </div>
+  
+  <!-- Feedback is placed here -->
+  <div id="feedback">Feedback:</div>
+  
+  <!-- Graphs for history logs -->
+  <div class="chart-container">
+    <canvas id="avgSpeedChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="maxSpeedChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="directionChart"></canvas>
+  </div>
+  
+  <script>
+    // UUIDs must match firmware:
+    // Wind Service: "12345678-1234-1234-1234-1234567890ab"
+    // TX Characteristic (sensor updates): "12345678-1234-1234-1234-1234567890ac"
+    // RX Characteristic (commands): "12345678-1234-1234-1234-1234567890ad"
+    // History Characteristic: "12345678-1234-1234-1234-1234567890ae"
+    const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
+    const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
+    const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
+    const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
-    <h2>Live Wind Data:</h2>
-    <div id="windData"></div>
-
-    <h2>History Log:</h2>
-    <pre id="historyBox"></pre>
-
+    let device, server, windService, txChar, rxChar, historyChar;
+    
+    const connectButton = document.getElementById("connectButton");
+    const disconnectButton = document.getElementById("disconnectButton");
+    const statusDiv = document.getElementById("status");
+    const feedbackDiv = document.getElementById("feedback");
+    
+    const windDirectionField = document.getElementById("windDirection");
+    const windSpeedField = document.getElementById("windSpeed");
+    const gustSpeedField = document.getElementById("gustSpeed");
+    
+    const tareButton = document.getElementById("tareButton");
+    const calibrateNorthButton = document.getElementById("calibrateNorthButton");
+    const calibrateSouthButton = document.getElementById("calibrateSouthButton");
+    const calibrateEastButton = document.getElementById("calibrateEastButton");
+    const calibrateWestButton = document.getElementById("calibrateWestButton");
+    const startButton = document.getElementById("startButton");
+    const stopButton = document.getElementById("stopButton");
+    const calSpeedInput = document.getElementById("calSpeed");
+    const setTimeInput = document.getElementById("setTime");
+    const setTimeButton = document.getElementById("setTimeButton");
+    const getHistoryButton = document.getElementById("getHistoryButton");
+    
+    // Create Chart.js graphs.
+    const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Avg Speed (km/h)' }}}}
+    });
+    const maxSpeedChart = new Chart(document.getElementById("maxSpeedChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Max Speed (km/h)', data: [], borderColor: 'red', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Max Speed (km/h)' }}}}
+    });
+    const directionChart = new Chart(document.getElementById("directionChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Direction (°)', data: [], borderColor: 'green', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
+    });
+    
+    function logFeedback(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      feedbackDiv.textContent += `[${timestamp}] ${message}\n`;
+      feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
+    }
+    
+    async function sendCommand(command) {
+      if (!rxChar) {
+        logFeedback("RX characteristic not found!");
+        return;
+      }
+      try {
+        logFeedback("Sending command: " + command);
+        await rxChar.writeValue(new TextEncoder().encode(command));
+      } catch (error) {
+        logFeedback("Send command error: " + error);
+      }
+    }
+    
+    function autoSyncTime() {
+      let now = new Date();
+      let hh = ("0" + now.getHours()).slice(-2);
+      let mm = ("0" + now.getMinutes()).slice(-2);
+      let ss = ("0" + now.getSeconds()).slice(-2);
+      sendCommand("TIME:" + hh + ":" + mm + ":" + ss);
+    }
+    
+    // Poll sensor data from TX characteristic every 10 seconds.
+    async function updateValues() {
+      try {
+        const value = await txChar.readValue();
+        const receivedText = new TextDecoder().decode(value.buffer);
+        logFeedback("Polled value: " + receivedText);
+        if (receivedText === "NO_WIND") {
+          windSpeedField.textContent = "0.00";
+          windDirectionField.textContent = "N/A";
+          gustSpeedField.textContent = "N/A";
+        } else if (receivedText.startsWith("WS:")) {
+          let regex = /^WS:([0-9.]+),DIR:([0-9.]+),CARD:([A-Z]+)$/;
+          let matches = receivedText.match(regex);
+          if (matches) {
+            windSpeedField.textContent = matches[1];
+            windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
+            gustSpeedField.textContent = "N/A";
+          }
+        }
+      } catch (error) {
+        logFeedback("Update Error: " + error);
+      }
+    }
+    
+    // Parse history records and update charts.
+    function updateHistoryCharts(historyStr) {
+      // Expected record format: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
+      const lines = historyStr.split("\n").filter(line => line.trim().length > 0 && /^[0-9]/.test(line));
+      const labels = [];
+      const avgData = [];
+      const maxData = [];
+      const dirData = [];
+      lines.forEach(line => {
+        const parts = line.split(" - ");
+        if (parts.length >= 2) {
+          const timePart = parts[0].trim();
+          const dataPart = parts[1].trim();
+          const avgMatch = dataPart.match(/Avg:([0-9.]+)/);
+          const maxMatch = dataPart.match(/Max:([0-9.]+)/);
+          const dirMatch = dataPart.match(/Dir:([0-9.]+)/);
+          if (avgMatch && maxMatch && dirMatch) {
+            labels.push(timePart);
+            avgData.push(parseFloat(avgMatch[1]));
+            maxData.push(parseFloat(maxMatch[1]));
+            dirData.push(parseFloat(dirMatch[1]));
+          }
+        }
+      });
+      avgSpeedChart.data.labels = labels;
+      avgSpeedChart.data.datasets[0].data = avgData;
+      avgSpeedChart.update();
+      
+      maxSpeedChart.data.labels = labels;
+      maxSpeedChart.data.datasets[0].data = maxData;
+      maxSpeedChart.update();
+      
+      directionChart.data.labels = labels;
+      directionChart.data.datasets[0].data = dirData;
+      directionChart.update();
+    }
+    
+    // When the user clicks "Get History", read the full history from historyChar.
+    async function getHistory() {
+      try {
+        const value = await historyChar.readValue();
+        const historyStr = new TextDecoder().decode(value.buffer);
+        logFeedback("History received:\n" + historyStr);
+        updateHistoryCharts(historyStr);
+      } catch (error) {
+        logFeedback("Get History error: " + error);
+      }
+    }
+    
+    connectButton.addEventListener("click", async () => {
+      try {
+        statusDiv.textContent = "Status: Connecting...";
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "TiltWind" }],
+          optionalServices: [WIND_SERVICE_UUID]
+        });
+        server = await device.gatt.connect();
+        windService = await server.getPrimaryService(WIND_SERVICE_UUID);
+        txChar = await windService.getCharacteristic(TX_CHAR_UUID);
+        rxChar = await windService.getCharacteristic(RX_CHAR_UUID);
+        historyChar = await windService.getCharacteristic(HISTORY_CHAR_UUID);
+        statusDiv.textContent = "Status: Connected";
+        connectButton.disabled = true;
+        disconnectButton.disabled = false;
+        logFeedback("Connected to TiltWind!");
+        autoSyncTime();
+        setInterval(updateValues, 10000); // Poll sensor data every 10 seconds
+      } catch (error) {
+        console.error("Connection Error:", error);
+        statusDiv.textContent = "Status: Error - " + error.message;
+        logFeedback("Error: " + error.message);
+      }
+    });
+    
+    disconnectButton.addEventListener("click", () => {
+      if (device && device.gatt.connected) {
+        device.gatt.disconnect();
+        statusDiv.textContent = "Status: Disconnected";
+        connectButton.disabled = false;
+        disconnectButton.disabled = true;
+        logFeedback("Disconnected.");
+      }
+    });
+    
+    tareButton.addEventListener("click", () => sendCommand("T"));
+    calibrateNorthButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C N:" + calSpeed);
+    });
+    calibrateSouthButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C S:" + calSpeed);
+    });
+    calibrateEastButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C E:" + calSpeed);
+    });
+    calibrateWestButton.addEventListener("click", () => {
+      const calSpeed = calSpeedInput.value;
+      sendCommand("C W:" + calSpeed);
+    });
+    startButton.addEventListener("click", () => sendCommand("S"));
+    stopButton.addEventListener("click", () => sendCommand("X"));
+    setTimeButton.addEventListener("click", () => {
+      const t = setTimeInput.value.trim();
+      if (t.length === 8) {
+        sendCommand("TIME:" + t);
+      } else {
+        logFeedback("Invalid time format. Use HH:MM:SS");
+      }
+    });
+    getHistoryButton.addEventListener("click", () => {
+      sendCommand("H");
+      // Allow some time (3 sec) for the firmware to update historyChar, then read it.
+      setTimeout(getHistory, 3000);
+    });
+  </script>
 </body>
 </html>
