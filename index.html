@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V13 Chunky</h1>
+  <h1>TILT WIND BLE MONITOR V14 Chunky</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -59,7 +59,7 @@
   </div>
   
   <script>
-    // BLE UUIDs – must match the firmware.
+    // BLE UUIDs – these must match your firmware.
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
@@ -68,7 +68,7 @@
     let device, server, windService, txChar, rxChar, historyChar;
     let historyBuffer = "";
     
-    // Grab DOM elements.
+    // DOM elements.
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -88,7 +88,7 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // Initialize Chart.js charts as before.
+    // Initialize Chart.js graphs (using previous working initialization).
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: {
@@ -145,14 +145,14 @@
     });
     
     // Logging helper.
-    function logFeedback(message) {
+    function logFeedback(msg) {
       const ts = new Date().toLocaleTimeString();
-      feedbackDiv.textContent += `[${ts}] ${message}\n`;
+      feedbackDiv.textContent += `[${ts}] ${msg}\n`;
       feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
-      console.log(message);
+      console.log(msg);
     }
     
-    // Sends a command over the RX characteristic.
+    // Send a command via the RX characteristic.
     async function sendCommand(cmd) {
       if (!rxChar) {
         logFeedback("RX characteristic not found!");
@@ -166,7 +166,7 @@
       }
     }
     
-    // Auto-sync device time.
+    // Auto-sync time.
     function autoSyncTime() {
       const now = new Date();
       const hh = ("0" + now.getHours()).slice(-2);
@@ -244,6 +244,7 @@
           const chunk = new TextDecoder().decode(event.target.value);
           logFeedback("History chunk received: " + chunk);
           historyBuffer += chunk;
+          // Check if the end marker is present.
           if (historyBuffer.indexOf("<END>") !== -1) {
             historyBuffer = historyBuffer.replace("<END>", "");
             logFeedback("Full history received:\n" + historyBuffer);
@@ -260,14 +261,26 @@
     getHistoryButton.addEventListener("click", () => {
       historyBuffer = "";
       sendCommand("H");
-      // Fallback read after 10 seconds.
+      // Fallback: after 10 seconds, if historyBuffer is non-empty, process it.
       setTimeout(async () => {
         try {
           const value = await historyChar.readValue();
           const data = new TextDecoder().decode(value.buffer);
-          if (data && data.indexOf("<END>") !== -1) {
-            logFeedback("Fallback read received full history:\n" + data.replace("<END>", ""));
-            updateHistoryCharts(data.replace("<END>", ""));
+          // If fallback read yields non-empty data or if our accumulated buffer is non-empty:
+          let fullHistory = "";
+          if (historyBuffer.trim() !== "") {
+            fullHistory = historyBuffer;
+          } else if (data.trim() !== "") {
+            fullHistory = data;
+          }
+          if (fullHistory !== "") {
+            // Remove the <END> marker if present.
+            fullHistory = fullHistory.replace("<END>", "");
+            logFeedback("Fallback read processed history:\n" + fullHistory);
+            updateHistoryCharts(fullHistory);
+            historyBuffer = "";
+          } else {
+            logFeedback("Fallback read: No history data received.");
           }
         } catch (err) {
           logFeedback("Fallback read error: " + err);
@@ -313,7 +326,7 @@
       }
     });
     
-    // Other command buttons.
+    // Other command button handlers.
     tareButton.addEventListener("click", () => sendCommand("T"));
     calibrateNorthButton.addEventListener("click", () => sendCommand("C N:" + calSpeedInput.value));
     calibrateSouthButton.addEventListener("click", () => sendCommand("C S:" + calSpeedInput.value));
