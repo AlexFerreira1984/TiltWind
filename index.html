@@ -17,21 +17,17 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V14 Pully</h1>
-  
-  <!-- Connection and status -->
+  <h1>TILT WIND BLE MONITOR V14 Pully_HR</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
   
-  <!-- Live sensor data display -->
   <div class="data">
     <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span></p>
     <p><strong>Wind Speed:</strong> <span id="windSpeed">N/A</span> km/h</p>
     <p><strong>Gust Speed:</strong> <span id="gustSpeed">N/A</span> km/h</p>
   </div>
   
-  <!-- Control buttons -->
   <div class="actions">
     <button id="tareButton">Tare</button><br>
     <label for="calSpeed">Calib Wind Speed (m/s):</label>
@@ -51,7 +47,7 @@
   <!-- Feedback area -->
   <div id="feedback">Feedback:</div>
   
-  <!-- Chart containers -->
+  <!-- Chart containers for Wind data -->
   <div class="chart-container">
     <canvas id="avgSpeedChart"></canvas>
   </div>
@@ -62,20 +58,30 @@
     <canvas id="directionChart"></canvas>
   </div>
   
+  <!-- Chart containers for BME680 data -->
+  <div class="chart-container">
+    <canvas id="tempChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="pressureChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="humidityChart"></canvas>
+  </div>
+  
   <script>
-    // BLE UUIDs – they must match your firmware configuration.
-    const WIND_SERVICE_UUID  = "12345678-1234-1234-1234-1234567890ab";
-    const TX_CHAR_UUID       = "12345678-1234-1234-1234-1234567890ac";
-    const RX_CHAR_UUID       = "12345678-1234-1234-1234-1234567890ad";
-    const HISTORY_CHAR_UUID  = "12345678-1234-1234-1234-1234567890ae";
+    // BLE UUIDs – these must match your firmware.
+    const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
+    const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
+    const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
+    const HISTORY_CHAR_UUID = "12345678-1234-1234-1234-1234567890ae";
     
     let device, server, windService, txChar, rxChar, historyChar;
-    
-    // For history polling:
+    // For polling history.
     let historyBuffer = "";
     let pollingHistory = false;
     
-    // Get DOM elements.
+    // DOM elements.
     const connectButton = document.getElementById("connectButton");
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
@@ -95,7 +101,7 @@
     const setTimeButton = document.getElementById("setTimeButton");
     const getHistoryButton = document.getElementById("getHistoryButton");
     
-    // Chart.js graphs.
+    // Initialize Chart.js graphs.
     const avgSpeedChart = new Chart(document.getElementById("avgSpeedChart").getContext("2d"), {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Avg Speed (km/h)', data: [], borderColor: 'blue', fill: false }] },
@@ -111,8 +117,24 @@
       data: { labels: [], datasets: [{ label: 'Direction (°)', data: [], borderColor: 'green', fill: false }] },
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Direction (°)' }}}}
     });
+    // New charts for BME680 data:
+    const tempChart = new Chart(document.getElementById("tempChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Temperature (°C)', data: [], borderColor: 'orange', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Temperature (°C)' }}}}
+    });
+    const pressureChart = new Chart(document.getElementById("pressureChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Pressure (hPa)', data: [], borderColor: 'purple', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Pressure (hPa)' }}}}
+    });
+    const humidityChart = new Chart(document.getElementById("humidityChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Humidity (%)', data: [], borderColor: 'teal', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Humidity (%)' }}}}
+    });
     
-    // Logging helper
+    // Logging helper.
     function logFeedback(message) {
       const ts = new Date().toLocaleTimeString();
       feedbackDiv.textContent += `[${ts}] ${message}\n`;
@@ -149,13 +171,13 @@
         const value = await txChar.readValue();
         const text = new TextDecoder().decode(value.buffer);
         logFeedback("Polled TX value: " + text);
-        // (Live sensor data handling can be extended here if needed.)
+        // (Live sensor data processing can be extended as needed.)
       } catch (error) {
         logFeedback("Update Error: " + error);
       }
     }
     
-    // Poll for one history chunk.
+    // Poll one history chunk.
     function pollHistoryChunk() {
       historyChar.readValue().then(value => {
         let chunk = new TextDecoder().decode(value.buffer);
@@ -185,10 +207,10 @@
       setTimeout(pollHistoryChunk, 1000);
     });
     
-    // updateHistoryCharts parses the history string and updates the charts.
-    // Each record is expected to be terminated by "<EOL>".
+    // updateHistoryCharts() parses the full history string.
+    // Expected record format:
+    // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°, Temp:tt.tt °C, Pres:pp.pp hPa, Hum:hh.hh%<EOL>"
     function updateHistoryCharts(historyStr) {
-      // Split the full string into individual records.
       let records = historyStr.split("<EOL>").filter(rec => rec.trim() !== "");
       if (records.length === 0) {
         logFeedback("No valid history records found.");
@@ -198,8 +220,11 @@
       let avgData = [];
       let maxData = [];
       let dirData = [];
-      // Expected record format: "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°"
-      const regex = /(\d{2}:\d{2}:\d{2})\s*-\s*Avg:([\d.]+)\s*km\/h,\s*Max:([\d.]+)\s*km\/h,\s*Dir:([\d.]+)°/;
+      let tempData = [];
+      let pressureData = [];
+      let humidityData = [];
+      // Regular expression to parse the history record.
+      const regex = /(\d{2}:\d{2}:\d{2})\s*-\s*Avg:([\d.]+)\s*km\/h,\s*Max:([\d.]+)\s*km\/h,\s*Dir:([\d.]+)°,\s*Temp:([\d.]+)\s*°C,\s*Pres:([\d.]+)\s*hPa,\s*Hum:([\d.]+)%/;
       records.forEach(rec => {
         let m = rec.match(regex);
         if (m) {
@@ -207,12 +232,16 @@
           avgData.push(parseFloat(m[2]));
           maxData.push(parseFloat(m[3]));
           dirData.push(parseFloat(m[4]));
+          tempData.push(parseFloat(m[5]));
+          pressureData.push(parseFloat(m[6]));
+          humidityData.push(parseFloat(m[7]));
         }
       });
       if (labels.length === 0) {
         logFeedback("No valid history records parsed.");
         return;
       }
+      // Update Wind charts.
       avgSpeedChart.data.labels = labels;
       avgSpeedChart.data.datasets[0].data = avgData;
       avgSpeedChart.update();
@@ -225,10 +254,23 @@
       directionChart.data.datasets[0].data = dirData;
       directionChart.update();
       
+      // Update BME680 charts.
+      tempChart.data.labels = labels;
+      tempChart.data.datasets[0].data = tempData;
+      tempChart.update();
+      
+      pressureChart.data.labels = labels;
+      pressureChart.data.datasets[0].data = pressureData;
+      pressureChart.update();
+      
+      humidityChart.data.labels = labels;
+      humidityChart.data.datasets[0].data = humidityData;
+      humidityChart.update();
+      
       logFeedback("Charts updated with " + labels.length + " history records.");
     }
     
-    // BLE connection: Connect and set up characteristics.
+    // BLE connection.
     connectButton.addEventListener("click", async () => {
       try {
         statusDiv.textContent = "Status: Connecting...";
