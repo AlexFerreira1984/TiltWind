@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TILT WIND ATRONIA</title>
+  <title>TILT WIND ATRONIA - Version 14.1 Pully_HR_Bat</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { text-align: center; color: #333; }
@@ -17,12 +17,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V14 PullyHR</h1>
+  <h1>TILT WIND BLE MONITOR V13 Chunky</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
   
-  <!-- Live data display -->
+  <!-- Live Data Display -->
   <div class="data">
     <p><strong>Wind Speed:</strong> <span id="windSpeed">N/A</span> km/h</p>
     <p><strong>Wind Direction:</strong> <span id="windDirection">N/A</span></p>
@@ -30,9 +30,10 @@
     <p><strong>Temperature:</strong> <span id="tempLive">N/A</span> °C</p>
     <p><strong>Pressure:</strong> <span id="pressureLive">N/A</span> hPa</p>
     <p><strong>Humidity:</strong> <span id="humidityLive">N/A</span> %</p>
+    <p><strong>Battery Voltage:</strong> <span id="batteryLive">N/A</span> V</p>
   </div>
   
-  <!-- Control buttons -->
+  <!-- Control Buttons -->
   <div class="actions">
     <button id="tareButton">Tare</button><br>
     <label for="calSpeed">Calib Wind Speed (m/s):</label>
@@ -49,10 +50,10 @@
     <button id="getHistoryButton">Get History</button>
   </div>
   
-  <!-- Feedback area -->
+  <!-- Feedback Area -->
   <div id="feedback">Feedback:</div>
   
-  <!-- Chart containers for wind data -->
+  <!-- Chart Containers for Wind Data -->
   <div class="chart-container">
     <canvas id="avgSpeedChart"></canvas>
   </div>
@@ -63,7 +64,7 @@
     <canvas id="directionChart"></canvas>
   </div>
   
-  <!-- Chart containers for BME680 data -->
+  <!-- Chart Containers for BME680 Data -->
   <div class="chart-container">
     <canvas id="tempChart"></canvas>
   </div>
@@ -74,8 +75,13 @@
     <canvas id="humidityChart"></canvas>
   </div>
   
+  <!-- Chart Container for Battery Voltage -->
+  <div class="chart-container">
+    <canvas id="batteryChart"></canvas>
+  </div>
+  
   <script>
-    // BLE UUIDs – these must match your firmware.
+    // BLE UUIDs – these must match your firmware configuration.
     const WIND_SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
     const TX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ac";
     const RX_CHAR_UUID = "12345678-1234-1234-1234-1234567890ad";
@@ -97,6 +103,7 @@
     const tempLiveField = document.getElementById("tempLive");
     const pressureLiveField = document.getElementById("pressureLive");
     const humidityLiveField = document.getElementById("humidityLive");
+    const batteryLiveField = document.getElementById("batteryLive");
     
     // Control buttons.
     const tareButton = document.getElementById("tareButton");
@@ -142,6 +149,11 @@
       data: { labels: [], datasets: [{ label: 'Humidity (%)', data: [], borderColor: 'teal', fill: false }] },
       options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Humidity (%)' }}}}
     });
+    const batteryChart = new Chart(document.getElementById("batteryChart").getContext("2d"), {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Battery Voltage (V)', data: [], borderColor: 'brown', fill: false }] },
+      options: { scales: { x: { title: { display: true, text: 'Time' }}, y: { title: { display: true, text: 'Voltage (V)' }}}}
+    });
     
     // Logging helper.
     function logFeedback(message) {
@@ -151,7 +163,7 @@
       console.log(message);
     }
     
-    // Send a command via the RX characteristic.
+    // Send command via RX characteristic.
     async function sendCommand(cmd) {
       if (!rxChar) {
         logFeedback("RX characteristic not found!");
@@ -180,10 +192,9 @@
         const value = await txChar.readValue();
         const text = new TextDecoder().decode(value.buffer);
         logFeedback("Polled TX value: " + text);
-        // Only update live fields if the message starts with "WS:".
+        // Expected format: WS:<wind>,DIR:<dir>,CARD:<card>,Temp:<temp>°C,Pres:<pres>hPa,Hum:<hum>%,Batt:<batt>V
         if (text.startsWith("WS:")) {
-          // Expected format: WS:<wind>,DIR:<dir>,CARD:<card>,Temp:<temp>°C,Pres:<pres>hPa,Hum:<hum>%
-          const regex = /^WS:([\d.]+),DIR:([\d.]+),CARD:([A-Z]+),Temp:([\d.]+)°C,Pres:([\d.]+)hPa,Hum:([\d.]+)%/;
+          const regex = /^WS:([\d.]+),DIR:([\d.]+),CARD:([A-Z]+),Temp:([\d.]+)°C,Pres:([\d.]+)hPa,Hum:([\d.]+)%,Batt:([\d.]+)V/;
           const matches = text.match(regex);
           if (matches) {
             windSpeedField.textContent = matches[1];
@@ -191,11 +202,12 @@
             tempLiveField.textContent = matches[4];
             pressureLiveField.textContent = matches[5];
             humidityLiveField.textContent = matches[6];
+            batteryLiveField.textContent = matches[7];
           } else {
             logFeedback("TX data does not match expected sensor format: " + text);
           }
         } else {
-          // Calibration or status messages: just log.
+          // Calibration or status messages.
           logFeedback("Received message: " + text);
         }
       } catch (error) {
@@ -233,8 +245,8 @@
     });
     
     // updateHistoryCharts parses the full history string.
-    // Expected record format:
-    // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°, Temp:tt.tt °C, Pres:pp.pp hPa, Hum:hh.hh%<EOL>"
+    // Expected format:
+    // "HH:MM:SS - Avg:xx.xx km/h, Max:yy.yy km/h, Dir:zz.zz°, Temp:tt.tt °C, Pres:pp.pp hPa, Hum:hh.hh%, Batt:bb.bbV<EOL>"
     function updateHistoryCharts(historyStr) {
       let records = historyStr.split("<EOL>").filter(rec => rec.trim() !== "");
       if (records.length === 0) {
@@ -248,7 +260,8 @@
       let tempData = [];
       let pressureData = [];
       let humidityData = [];
-      const regex = /(\d{2}:\d{2}:\d{2})\s*-\s*Avg:([\d.]+)\s*km\/h,\s*Max:([\d.]+)\s*km\/h,\s*Dir:([\d.]+)°,\s*Temp:([\d.]+)\s*°C,\s*Pres:([\d.]+)\s*hPa,\s*Hum:([\d.]+)%/;
+      let batteryData = [];
+      const regex = /(\d{2}:\d{2}:\d{2})\s*-\s*Avg:([\d.]+)\s*km\/h,\s*Max:([\d.]+)\s*km\/h,\s*Dir:([\d.]+)°,\s*Temp:([\d.]+)\s*°C,\s*Pres:([\d.]+)\s*hPa,\s*Hum:([\d.]+)%,\s*Batt:([\d.]+)V/;
       records.forEach(rec => {
         let m = rec.match(regex);
         if (m) {
@@ -259,6 +272,7 @@
           tempData.push(parseFloat(m[5]));
           pressureData.push(parseFloat(m[6]));
           humidityData.push(parseFloat(m[7]));
+          batteryData.push(parseFloat(m[8]));
         }
       });
       if (labels.length === 0) {
@@ -288,6 +302,10 @@
       humidityChart.data.labels = labels;
       humidityChart.data.datasets[0].data = humidityData;
       humidityChart.update();
+      
+      batteryChart.data.labels = labels;
+      batteryChart.data.datasets[0].data = batteryData;
+      batteryChart.update();
       
       logFeedback("Charts updated with " + labels.length + " history records.");
     }
