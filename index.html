@@ -17,9 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>TILT WIND BLE MONITOR V13 Chunky</h1>
-  
-  <!-- Connection and status -->
+  <h1>TILT WIND BLE MONITOR V14 PullyHR</h1>
   <button id="connectButton">Connect</button>
   <button id="disconnectButton" disabled>Disconnect</button>
   <div id="status">Status: Disconnected</div>
@@ -92,6 +90,7 @@
     const disconnectButton = document.getElementById("disconnectButton");
     const statusDiv = document.getElementById("status");
     const feedbackDiv = document.getElementById("feedback");
+    
     const windSpeedField = document.getElementById("windSpeed");
     const windDirectionField = document.getElementById("windDirection");
     const gustSpeedField = document.getElementById("gustSpeed");
@@ -152,7 +151,7 @@
       console.log(message);
     }
     
-    // Send command via RX characteristic.
+    // Send a command via the RX characteristic.
     async function sendCommand(cmd) {
       if (!rxChar) {
         logFeedback("RX characteristic not found!");
@@ -181,21 +180,23 @@
         const value = await txChar.readValue();
         const text = new TextDecoder().decode(value.buffer);
         logFeedback("Polled TX value: " + text);
-        
-        // Use a regex to parse the TX string.
-        // Expected format: WS:<wind>,DIR:<dir>,CARD:<card>,Temp:<temp>°C,Pres:<pres>hPa,Hum:<hum>%
-        const regex = /^WS:([\d.]+),DIR:([\d.]+),CARD:([A-Z]+),Temp:([\d.]+)°C,Pres:([\d.]+)hPa,Hum:([\d.]+)%/;
-        const matches = text.match(regex);
-        if (matches) {
-          windSpeedField.textContent = matches[1];
-          windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
-          // You can optionally update gustSpeed if available.
-          tempLiveField.textContent = matches[4];
-          pressureLiveField.textContent = matches[5];
-          humidityLiveField.textContent = matches[6];
+        // Only update live fields if the message starts with "WS:".
+        if (text.startsWith("WS:")) {
+          // Expected format: WS:<wind>,DIR:<dir>,CARD:<card>,Temp:<temp>°C,Pres:<pres>hPa,Hum:<hum>%
+          const regex = /^WS:([\d.]+),DIR:([\d.]+),CARD:([A-Z]+),Temp:([\d.]+)°C,Pres:([\d.]+)hPa,Hum:([\d.]+)%/;
+          const matches = text.match(regex);
+          if (matches) {
+            windSpeedField.textContent = matches[1];
+            windDirectionField.textContent = matches[2] + "° (" + matches[3] + ")";
+            tempLiveField.textContent = matches[4];
+            pressureLiveField.textContent = matches[5];
+            humidityLiveField.textContent = matches[6];
+          } else {
+            logFeedback("TX data does not match expected sensor format: " + text);
+          }
         } else {
-          // If not matching expected pattern, display full string in feedback.
-          logFeedback("TX data does not match expected format: " + text);
+          // Calibration or status messages: just log.
+          logFeedback("Received message: " + text);
         }
       } catch (error) {
         logFeedback("Update Error: " + error);
